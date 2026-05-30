@@ -27,7 +27,7 @@ onMounted(async () => {
   if (!token) return
   loading.value = true
   try {
-    const res = await axios.get(`/auth/verify?token=${token}`)
+    const res = await axios.get('/auth/verify', { params: { token } })
     localStorage.setItem('token', res.data.access_token)
     router.push('/')
   } catch {
@@ -60,7 +60,20 @@ onMounted(async () => {
           @blur="e => (e.target as HTMLInputElement).style.borderColor = 'var(--border)'" />
 
         <button type="submit" :disabled="loading"
-          style="width:100%; padding:13px; border-radius:12px; border:none; cursor:pointer; font-weight:600; font-size:14px; color:#000; background:#06b6d4; box-shadow:0 0 30px rgba(6,182,212,0.4); transition:opacity .2s;">
+          :style="{
+            width: '100%',
+            padding: '13px',
+            borderRadius: '12px',
+            border: 'none',
+            cursor: 'pointer',
+            fontWeight: 600,
+            fontSize: '14px',
+            color: '#000',
+            background: '#06b6d4',
+            boxShadow: '0 0 30px rgba(6,182,212,0.4)',
+            transition: 'opacity .2s',
+            opacity: loading ? 0.7 : 1,
+          }">
           {{ loading ? 'Sende...' : 'Magic Link anfordern ✉️' }}
         </button>
 
