@@ -10,6 +10,7 @@ export default defineConfig({
     proxy: {
       '/auth': { target: 'http://backend:8000', changeOrigin: true },
       '/events': { target: 'http://backend:8000', changeOrigin: true },
+      '/uploads': { target: 'http://backend:8000', changeOrigin: true },
     },
   },
 })
