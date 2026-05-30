@@ -1,9 +1,10 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, func
 from typing import List
-from datetime import date
+from datetime import datetime
 import uuid
+import os
 
 from database import get_db
 import models
@@ -11,72 +12,72 @@ import schemas
 import auth
 from fastapi.security import OAuth2PasswordBearer
 
-from weather import get_weather_forecast
-from holidays import get_german_holidays
-
 router = APIRouter()
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/verify")
+
+ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/webp"}
+MAX_IMAGE_BYTES = 5 * 1024 * 1024  # 5 MB
+
 
 async def get_current_user(token: str = Depends(oauth2_scheme), db: AsyncSession = Depends(get_db)):
     payload = auth.verify_token(token)
     if payload is None:
         raise HTTPException(status_code=401, detail="Invalid token")
-
     user_id = payload.get("sub")
     if user_id is None:
         raise HTTPException(status_code=401, detail="Invalid token")
-
     result = await db.execute(select(models.User).where(models.User.id == uuid.UUID(user_id)))
     user = result.scalar_one_or_none()
-
     if user is None:
         raise HTTPException(status_code=401, detail="User not found")
-
     return user
 
-@router.get("/{event_id}/weather")
-async def get_event_weather(
-    event_id: uuid.UUID,
-    lat: float,
-    lon: float,
-    start_date: date,
-    end_date: date,
-    current_user: models.User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db)
-):
-    return await get_weather_forecast(lat, lon, start_date, end_date)
 
-@router.get("/holidays/{year}")
-async def get_holidays(
-    year: int,
-    bundesland: str = "ALL",
-    current_user: models.User = Depends(get_current_user)
-):
-    return await get_german_holidays(year, bundesland)
+async def _get_event_as_participant(event_id: uuid.UUID, user: models.User, db: AsyncSession) -> models.Event:
+    result = await db.execute(
+        select(models.Event)
+        .join(models.EventParticipant)
+        .where(models.Event.id == event_id)
+        .where(models.EventParticipant.user_id == user.id)
+    )
+    event = result.scalar_one_or_none()
+    if not event:
+        raise HTTPException(status_code=404, detail="Event not found")
+    return event
+
 
 @router.post("/", response_model=schemas.EventResponse)
-async def create_event(event_in: schemas.EventCreate, current_user: models.User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+async def create_event(
+    event_in: schemas.EventCreate,
+    current_user: models.User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
     db_event = models.Event(
-        **event_in.dict(),
-        organizer_id=current_user.id
+        title=event_in.title,
+        description=event_in.description,
+        location_name=event_in.location_name,
+        accent_color=event_in.accent_color,
+        organizer_id=current_user.id,
     )
     db.add(db_event)
     await db.flush()
-    
-    # Organizer automatically becomes a participant
-    participant = models.EventParticipant(
-        event_id=db_event.id,
-        user_id=current_user.id
-    )
+
+    participant = models.EventParticipant(event_id=db_event.id, user_id=current_user.id)
     db.add(participant)
-    
+
+    for d in event_in.proposed_dates:
+        db.add(models.DateProposal(event_id=db_event.id, proposed_date=d))
+
     await db.commit()
     await db.refresh(db_event)
     return db_event
 
+
 @router.get("/", response_model=List[schemas.EventResponse])
-async def list_events(current_user: models.User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    # List events where user is organizer or participant
+async def list_events(
+    current_user: models.User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
     result = await db.execute(
         select(models.Event)
         .join(models.EventParticipant)
@@ -84,53 +85,192 @@ async def list_events(current_user: models.User = Depends(get_current_user), db:
     )
     return result.scalars().all()
 
-@router.post("/{event_id}/invite", status_code=status.HTTP_200_OK)
+
+@router.get("/{event_id}", response_model=schemas.EventResponse)
+async def get_event(
+    event_id: uuid.UUID,
+    current_user: models.User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    return await _get_event_as_participant(event_id, current_user, db)
+
+
+@router.patch("/{event_id}", response_model=schemas.EventResponse)
+async def patch_event(
+    event_id: uuid.UUID,
+    patch: schemas.EventPatch,
+    current_user: models.User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    event = await _get_event_as_participant(event_id, current_user, db)
+    if event.organizer_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Only the organizer can edit this event")
+    for field, value in patch.model_dump(exclude_none=True).items():
+        setattr(event, field, value)
+    await db.commit()
+    await db.refresh(event)
+    return event
+
+
+@router.post("/{event_id}/cover", response_model=schemas.EventResponse)
+async def upload_cover(
+    event_id: uuid.UUID,
+    file: UploadFile = File(...),
+    current_user: models.User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    from PIL import Image
+    import io
+
+    event = await _get_event_as_participant(event_id, current_user, db)
+    if event.organizer_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Only the organizer can upload a cover")
+
+    if file.content_type not in ALLOWED_IMAGE_TYPES:
+        raise HTTPException(status_code=415, detail="Only JPEG, PNG, or WebP images are allowed")
+
+    contents = await file.read()
+    if len(contents) > MAX_IMAGE_BYTES:
+        raise HTTPException(status_code=413, detail="Image must be smaller than 5 MB")
+
+    img = Image.open(io.BytesIO(contents))
+    if img.width > 1200:
+        ratio = 1200 / img.width
+        img = img.resize((1200, int(img.height * ratio)), Image.LANCZOS)
+
+    ext = file.content_type.split("/")[1].replace("jpeg", "jpg")
+    filename = f"{uuid.uuid4()}.{ext}"
+    path = f"/app/uploads/{filename}"
+
+    if event.cover_image_path:
+        old = f"/app/{event.cover_image_path}"
+        if os.path.exists(old):
+            os.remove(old)
+
+    img.save(path, quality=85, optimize=True)
+    event.cover_image_path = f"uploads/{filename}"
+    await db.commit()
+    await db.refresh(event)
+    return event
+
+
+@router.delete("/{event_id}/cover", status_code=204)
+async def delete_cover(
+    event_id: uuid.UUID,
+    current_user: models.User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    event = await _get_event_as_participant(event_id, current_user, db)
+    if event.organizer_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Only the organizer can delete the cover")
+    if event.cover_image_path:
+        path = f"/app/{event.cover_image_path}"
+        if os.path.exists(path):
+            os.remove(path)
+        event.cover_image_path = None
+        await db.commit()
+
+
+@router.get("/{event_id}/participants", response_model=List[schemas.ParticipantResponse])
+async def get_participants(
+    event_id: uuid.UUID,
+    current_user: models.User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    await _get_event_as_participant(event_id, current_user, db)
+
+    result = await db.execute(
+        select(
+            models.User.id,
+            models.User.name,
+            models.User.email,
+            models.EventParticipant.joined_at,
+            func.count(models.Availability.id).label("availability_count"),
+        )
+        .join(models.EventParticipant, models.EventParticipant.user_id == models.User.id)
+        .outerjoin(models.Availability, models.Availability.participant_id == models.EventParticipant.id)
+        .where(models.EventParticipant.event_id == event_id)
+        .group_by(models.User.id, models.User.name, models.User.email, models.EventParticipant.joined_at)
+    )
+    rows = result.all()
+    return [
+        schemas.ParticipantResponse(
+            id=r.id, name=r.name, email=r.email,
+            joined_at=r.joined_at, availability_count=r.availability_count
+        )
+        for r in rows
+    ]
+
+
+@router.post("/{event_id}/invite", status_code=200)
 async def invite_participant(
     event_id: uuid.UUID,
     email: str,
     current_user: models.User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
 ):
-    # Check if user is organizer
-    result = await db.execute(select(models.Event).where(models.Event.id == event_id))
-    event = result.scalar_one_or_none()
-    
-    if not event or event.organizer_id != current_user.id:
+    event = await _get_event_as_participant(event_id, current_user, db)
+    if event.organizer_id != current_user.id:
         raise HTTPException(status_code=403, detail="Only the organizer can invite participants")
-    
-    # Check if user already exists
+
     result = await db.execute(select(models.User).where(models.User.email == email))
     user = result.scalar_one_or_none()
-    
     if not user:
-        user = models.User(email=email, name=email.split("@")[0])
+        user = models.User(
+            id=uuid.uuid4(), email=email, name=email.split("@")[0],
+            is_owner=False, is_active=True, created_at=datetime.utcnow(), updated_at=datetime.utcnow(),
+        )
         db.add(user)
         await db.flush()
-    
-    # Add as participant if not already
+
     result = await db.execute(
         select(models.EventParticipant)
         .where(models.EventParticipant.event_id == event_id)
         .where(models.EventParticipant.user_id == user.id)
     )
     if not result.scalar_one_or_none():
-        participant = models.EventParticipant(event_id=event_id, user_id=user.id)
-        db.add(participant)
-    
+        db.add(models.EventParticipant(event_id=event_id, user_id=user.id))
+
     await db.commit()
-    return {"message": f"User {email} invited"}
+    return {"message": f"{email} eingeladen"}
 
-@router.get("/{event_id}", response_model=schemas.EventResponse)
-async def get_event(event_id: uuid.UUID, current_user: models.User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+
+@router.get("/{event_id}/proposals", response_model=List[schemas.DateProposalResponse])
+async def get_proposals(
+    event_id: uuid.UUID,
+    current_user: models.User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    await _get_event_as_participant(event_id, current_user, db)
     result = await db.execute(
-        select(models.Event)
-        .join(models.EventParticipant)
-        .where(models.Event.id == event_id)
-        .where(models.EventParticipant.user_id == current_user.id)
+        select(models.DateProposal)
+        .where(models.DateProposal.event_id == event_id)
+        .order_by(models.DateProposal.proposed_date)
     )
-    event = result.scalar_one_or_none()
+    return result.scalars().all()
 
-    if not event:
-        raise HTTPException(status_code=404, detail="Event not found")
 
-    return event
+@router.post("/{event_id}/proposals", response_model=List[schemas.DateProposalResponse])
+async def set_proposals(
+    event_id: uuid.UUID,
+    body: schemas.DateProposalsSet,
+    current_user: models.User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    event = await _get_event_as_participant(event_id, current_user, db)
+    if event.organizer_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Only the organizer can set date proposals")
+
+    existing = await db.execute(
+        select(models.DateProposal).where(models.DateProposal.event_id == event_id)
+    )
+    for p in existing.scalars().all():
+        await db.delete(p)
+
+    new_proposals = [
+        models.DateProposal(id=uuid.uuid4(), event_id=event_id, proposed_date=d)
+        for d in body.dates
+    ]
+    db.add_all(new_proposals)
+    await db.commit()
+    return new_proposals

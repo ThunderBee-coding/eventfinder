@@ -1,6 +1,8 @@
 from fastapi import FastAPI, Depends, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy.ext.asyncio import AsyncSession
+import os
 import uvicorn
 
 from database import get_db
@@ -24,6 +26,9 @@ app.add_middleware(
 app.include_router(api_auth.router, prefix="/auth", tags=["auth"])
 app.include_router(api_events.router, prefix="/events", tags=["events"])
 app.include_router(api_availabilities.router, prefix="/events", tags=["availabilities"])
+
+os.makedirs("/app/uploads", exist_ok=True)
+app.mount("/uploads", StaticFiles(directory="/app/uploads"), name="uploads")
 
 @app.get("/")
 async def root():
