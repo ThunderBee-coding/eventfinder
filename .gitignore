@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+venv/
+.env
+*.egg-info/
+
+# Node
+node_modules/
+dist/
+.vite/
+
+# Docker
+*.log
+
+# Uploads (user data)
+backend/uploads/
+
+# OS
+.DS_Store
