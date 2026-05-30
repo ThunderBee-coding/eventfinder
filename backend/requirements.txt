@@ -12,3 +12,4 @@ celery
 redis
 python-dotenv
 httpx
+Pillow>=10.0.0
