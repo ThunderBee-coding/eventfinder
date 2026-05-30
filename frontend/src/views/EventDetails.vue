@@ -28,21 +28,31 @@ const availComment = ref('')
 const showCoverUpload = ref(false)
 
 async function load() {
-  const token = localStorage.getItem('token') ?? ''
-  const payload = JSON.parse(atob(token.split('.')[1]))
-  myUserId.value = payload.sub
+  try {
+    const token = localStorage.getItem('token') ?? ''
+    try {
+      const payload = JSON.parse(atob(token.split('.')[1]))
+      myUserId.value = payload.sub
+    } catch (e) {
+      console.error('JWT decode failed:', e)
+      return
+    }
 
-  const [evRes, pRes, propRes, avRes] = await Promise.all([
-    axios.get(`/events/${eventId}`, { headers: headers() }),
-    axios.get(`/events/${eventId}/participants`, { headers: headers() }),
-    axios.get(`/events/${eventId}/proposals`, { headers: headers() }),
-    axios.get(`/events/${eventId}/availability`, { headers: headers() }),
-  ])
-  event.value = evRes.data
-  participants.value = pRes.data
-  proposals.value = propRes.data
-  availabilities.value = avRes.data
-  loading.value = false
+    const [evRes, pRes, propRes, avRes] = await Promise.all([
+      axios.get(`/events/${eventId}`, { headers: headers() }),
+      axios.get(`/events/${eventId}/participants`, { headers: headers() }),
+      axios.get(`/events/${eventId}/proposals`, { headers: headers() }),
+      axios.get(`/events/${eventId}/availability`, { headers: headers() }),
+    ])
+    event.value = evRes.data
+    participants.value = pRes.data
+    proposals.value = propRes.data
+    availabilities.value = avRes.data
+  } catch (error) {
+    console.error('Failed to load event:', error)
+  } finally {
+    loading.value = false
+  }
 }
 
 const isOrganizer = computed(() => event.value?.organizer_id === myUserId.value)
@@ -77,10 +87,15 @@ async function setFinalDate(date: string) {
 async function uploadCover(e: Event) {
   const file = (e.target as HTMLInputElement).files?.[0]
   if (!file) return
-  const fd = new FormData(); fd.append('file', file)
-  await axios.post(`/events/${eventId}/cover`, fd, { headers: { ...headers(), 'Content-Type': 'multipart/form-data' } })
-  showCoverUpload.value = false
-  await load()
+  try {
+    const fd = new FormData()
+    fd.append('file', file)
+    await axios.post(`/events/${eventId}/cover`, fd, { headers: headers() })
+    showCoverUpload.value = false
+    await load()
+  } catch (error) {
+    console.error('Cover upload failed:', error)
+  }
 }
 
 onMounted(load)
