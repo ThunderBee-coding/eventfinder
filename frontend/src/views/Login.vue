@@ -7,19 +7,16 @@ const email = ref('')
 const loading = ref(false)
 const message = ref('')
 const error = ref('')
-
 const route = useRoute()
 const router = useRouter()
 
 const requestMagicLink = async () => {
-  loading.ref = true
-  error.value = ''
-  message.value = ''
+  loading.value = true; error.value = ''; message.value = ''
   try {
     await axios.post('/auth/magic-link', { email: email.value })
-    message.value = 'Magic Link wurde gesendet! Bitte prüfe dein Postfach.'
-  } catch (err) {
-    error.value = 'Fehler beim Senden des Links.'
+    message.value = 'Magic Link gesendet! Bitte prüfe dein Postfach.'
+  } catch {
+    error.value = 'Fehler beim Senden. Bitte versuche es erneut.'
   } finally {
     loading.value = false
   }
@@ -27,51 +24,51 @@ const requestMagicLink = async () => {
 
 onMounted(async () => {
   const token = route.query.token as string
-  if (token) {
-    loading.value = true
-    try {
-      const response = await axios.get(`/auth/verify?token=${token}`)
-      localStorage.setItem('token', response.data.access_token)
-      router.push('/')
-    } catch (err) {
-      error.value = 'Ungültiger oder abgelaufener Link.'
-    } finally {
-      loading.value = false
-    }
+  if (!token) return
+  loading.value = true
+  try {
+    const res = await axios.get(`/auth/verify?token=${token}`)
+    localStorage.setItem('token', res.data.access_token)
+    router.push('/')
+  } catch {
+    error.value = 'Ungültiger oder abgelaufener Link.'
+  } finally {
+    loading.value = false
   }
 })
 </script>
 
 <template>
-  <div class="min-h-screen flex items-center justify-center bg-gray-100 py-12 px-4 sm:px-6 lg:px-8">
-    <div class="max-w-md w-full space-y-8 bg-white p-10 rounded-xl shadow-md">
-      <div>
-        <h2 class="mt-6 text-center text-3xl font-extrabold text-gray-900">EventFinder</h2>
-        <p class="mt-2 text-center text-sm text-gray-600">
-          Melde dich mit deinem Magic Link an
-        </p>
+  <div style="min-height:100vh; display:flex; align-items:center; justify-content:center; padding:24px; position:relative; overflow:hidden; background:var(--bg-base);">
+    <div style="position:absolute; width:600px; height:600px; border-radius:50%; background:#06b6d4; opacity:0.05; filter:blur(100px); pointer-events:none;" />
+    <div style="position:relative; width:100%; max-width:380px; background:var(--bg-surface); backdrop-filter:blur(20px); border-radius:24px; padding:40px; border:1px solid var(--border); box-shadow:0 0 60px rgba(6,182,212,0.1);">
+      <div style="text-align:center; margin-bottom:32px;">
+        <div style="font-size:44px; margin-bottom:12px;">🗓️</div>
+        <h1 style="font-size:26px; font-weight:700; letter-spacing:-0.5px; margin-bottom:6px;">EventFinder</h1>
+        <p style="color:var(--text-secondary); font-size:14px;">Plane gemeinsame Events mit deinen Freunden</p>
       </div>
-      <form class="mt-8 space-y-6" @submit.prevent="requestMagicLink">
-        <div class="rounded-md shadow-sm -space-y-px">
-          <div>
-            <label for="email-address" class="sr-only">E-Mail Adresse</label>
-            <input v-model="email" id="email-address" name="email" type="email" autocomplete="email" required
-              class="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-t-md focus:outline-none focus:ring-primary-500 focus:border-primary-500 focus:z-10 sm:text-sm"
-              placeholder="E-Mail Adresse">
-          </div>
-        </div>
 
-        <div>
-          <button type="submit" :disabled="loading"
-            class="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500">
-            <span v-if="loading">Lädt...</span>
-            <span v-else>Magic Link anfordern</span>
-          </button>
-        </div>
-        
-        <p v-if="message" class="text-green-600 text-sm text-center">{{ message }}</p>
-        <p v-if="error" class="text-red-600 text-sm text-center">{{ error }}</p>
+      <div v-if="loading && !error && !message" style="text-align:center; color:var(--text-secondary); padding:20px 0;">
+        Einen Moment...
+      </div>
+
+      <form v-else @submit.prevent="requestMagicLink">
+        <label style="font-size:11px; color:var(--text-muted); text-transform:uppercase; letter-spacing:.08em; display:block; margin-bottom:8px;">E-Mail Adresse</label>
+        <input v-model="email" type="email" placeholder="du@beispiel.de" required
+          style="width:100%; background:rgba(255,255,255,0.05); border:1px solid var(--border); border-radius:12px; padding:13px 16px; color:#fff; font-size:14px; outline:none; margin-bottom:14px; transition:border-color .2s; box-sizing:border-box;"
+          @focus="e => (e.target as HTMLInputElement).style.borderColor = 'rgba(255,255,255,0.25)'"
+          @blur="e => (e.target as HTMLInputElement).style.borderColor = 'var(--border)'" />
+
+        <button type="submit" :disabled="loading"
+          style="width:100%; padding:13px; border-radius:12px; border:none; cursor:pointer; font-weight:600; font-size:14px; color:#000; background:#06b6d4; box-shadow:0 0 30px rgba(6,182,212,0.4); transition:opacity .2s;">
+          {{ loading ? 'Sende...' : 'Magic Link anfordern ✉️' }}
+        </button>
+
+        <p v-if="message" style="color:#10b981; font-size:13px; text-align:center; margin-top:16px;">{{ message }}</p>
+        <p v-if="error" style="color:#f43f5e; font-size:13px; text-align:center; margin-top:16px;">{{ error }}</p>
       </form>
+
+      <p style="text-align:center; color:var(--text-muted); font-size:12px; margin-top:24px;">Kein Passwort nötig — du bekommst einen sicheren Link per E-Mail.</p>
     </div>
   </div>
 </template>
