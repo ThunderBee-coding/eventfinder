@@ -68,9 +68,12 @@ class Event(Base):
     is_closed: Mapped[bool] = mapped_column(default=False)
     created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(default=datetime.utcnow, onupdate=datetime.utcnow)
+    accent_color: Mapped[str] = mapped_column(String(7), default='#06b6d4')
+    cover_image_path: Mapped[Optional[str]] = mapped_column(String(255))
 
     organizer: Mapped["User"] = relationship(back_populates="events_organized")
     participants: Mapped[List["EventParticipant"]] = relationship(back_populates="event", cascade="all, delete-orphan")
+    proposals: Mapped[List["DateProposal"]] = relationship(back_populates="event", cascade="all, delete-orphan")
 
 class EventParticipant(Base):
     __tablename__ = "event_participants"
@@ -124,3 +127,15 @@ class Notification(Base):
     sent_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
 
     user: Mapped["User"] = relationship(back_populates="notifications")
+
+class DateProposal(Base):
+    __tablename__ = "date_proposals"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    event_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("events.id", ondelete="CASCADE"), nullable=False)
+    proposed_date: Mapped[date] = mapped_column(Date, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
+
+    event: Mapped["Event"] = relationship(back_populates="proposals")
+
+    __table_args__ = (UniqueConstraint("event_id", "proposed_date", name="uq_event_date_proposal"),)
