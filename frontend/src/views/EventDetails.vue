@@ -1,8 +1,10 @@
 <!-- frontend/src/views/EventDetails.vue -->
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, computed, nextTick } from 'vue'
 import { useRoute } from 'vue-router'
 import axios from 'axios'
+import type { Map as LeafletMap, Marker } from 'leaflet'
+import 'leaflet/dist/leaflet.css'
 import { useAuth } from '../composables/useAuth'
 import EventHero from '../components/EventHero.vue'
 import AvailabilityCalendar from '../components/AvailabilityCalendar.vue'
@@ -26,6 +28,16 @@ const selectedDate = ref('')
 const availStatus = ref<'best'|'possible'|'impossible'>('possible')
 const availComment = ref('')
 const showCoverUpload = ref(false)
+
+// --- Orts-Editor (Leaflet + Nominatim) ---
+const locationSearch = ref('')
+const locationResults = ref<Array<{ display_name: string; lat: number; lon: number; bundesland: string }>>([])
+let locationSearchTimeout: ReturnType<typeof setTimeout> | null = null
+let mapInstance: LeafletMap | null = null
+let mapMarker: Marker | null = null
+
+// --- Stub für Task 10 (Wetter), wird von saveLocation aufgerufen ---
+async function loadWeatherHints() { /* Task 10 */ }
 
 // --- Datums-Manager (nur Organisator) ---
 const showDateManager = ref(false)
@@ -170,6 +182,72 @@ async function updateLocation(value: string) {
   await load()
 }
 
+async function onLocationSearchInput() {
+  if (locationSearchTimeout) clearTimeout(locationSearchTimeout)
+  if (locationSearch.value.length < 3) {
+    locationResults.value = []
+    return
+  }
+  locationSearchTimeout = setTimeout(async () => {
+    try {
+      const res = await axios.get(`/geocode?q=${encodeURIComponent(locationSearch.value)}`, { headers: headers() })
+      locationResults.value = res.data
+    } catch (e) {
+      console.error('Geocode search failed', e)
+    }
+  }, 300)
+}
+
+function selectLocation(result: { display_name: string; lat: number; lon: number }) {
+  locationSearch.value = result.display_name
+  locationResults.value = []
+  if (mapInstance) {
+    mapInstance.setView([result.lat, result.lon], 14)
+    if (mapMarker) {
+      mapMarker.setLatLng([result.lat, result.lon])
+    } else {
+      import('leaflet').then(L => {
+        mapMarker = L.marker([result.lat, result.lon]).addTo(mapInstance!)
+      })
+    }
+  }
+}
+
+async function saveLocation() {
+  if (!locationSearch.value) return
+  try {
+    await axios.patch(`/events/${eventId}`, { address: locationSearch.value }, { headers: headers() })
+    locationResults.value = []
+    await load()
+    await loadWeatherHints()
+  } catch (e) {
+    console.error('Save location failed', e)
+  }
+}
+
+async function initMap(elementId: string, lat?: number, lon?: number) {
+  const L = await import('leaflet')
+  // Fix Leaflet default icon path in Vite
+  delete (L.Icon.Default.prototype as any)._getIconUrl
+  L.Icon.Default.mergeOptions({
+    iconUrl: new URL('leaflet/dist/images/marker-icon.png', import.meta.url).href,
+    iconRetinaUrl: new URL('leaflet/dist/images/marker-icon-2x.png', import.meta.url).href,
+    shadowUrl: new URL('leaflet/dist/images/marker-shadow.png', import.meta.url).href,
+  })
+  const el = document.getElementById(elementId)
+  if (!el) return null
+  const center: [number, number] = lat && lon ? [lat, lon] : [48.137, 11.576]
+  const zoom = lat && lon ? 13 : 5
+  const m = L.map(el, { zoomControl: true }).setView(center, zoom)
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+    attribution: '© OpenStreetMap © CARTO'
+  }).addTo(m)
+  if (lat && lon) {
+    L.marker([lat, lon]).addTo(m)
+  }
+  return m
+}
+
 async function deleteParticipant(userId: string) {
   if (!confirm('Teilnehmer wirklich entfernen?')) return
   await axios.delete(`/events/${eventId}/participants/${userId}`, { headers: headers() })
@@ -183,7 +261,24 @@ async function transferOrganizer(userId: string) {
   await load()
 }
 
-onMounted(load)
+onMounted(async () => {
+  await load()
+  // Karte für Nicht-Organisatoren initialisieren
+  if (event.value?.latitude && !isOrganizer.value) {
+    await nextTick()
+    mapInstance = await initMap('event-readonly-map', event.value.latitude, event.value.longitude) as any
+  }
+  // Orts-Karte für Organizer initialisieren
+  if (isOrganizer.value) {
+    await nextTick()
+    locationSearch.value = event.value?.address || event.value?.location_name || ''
+    mapInstance = await initMap('event-location-map', event.value?.latitude, event.value?.longitude) as any
+    if (mapInstance && event.value?.latitude && event.value?.longitude) {
+      const L = await import('leaflet')
+      mapMarker = L.marker([event.value.latitude, event.value.longitude]).addTo(mapInstance)
+    }
+  }
+})
 </script>
 
 <template>
@@ -204,15 +299,72 @@ onMounted(load)
         :title="event.title"
         :description="event.description"
         :location-name="event.location_name"
+        :address="event.address"
         :accent-color="event.accent_color"
         :cover-image-path="event.cover_image_path"
         :participant-count="participants.length"
         :is-organizer="isOrganizer"
         @invite="showInvite = true"
         @edit-cover="showCoverUpload = true"
+        @edit-location="locationSearch = event.address || event.location_name || ''"
         @update-location="updateLocation"
         style="margin-bottom:28px;"
       />
+
+      <!-- ORTS-EDITOR (nur für Organizer) -->
+      <div v-if="isOrganizer" style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:20px;">
+
+        <!-- Ort-Editor -->
+        <div style="background:var(--bg-surface); border:1px solid var(--border); border-radius:16px; padding:20px;">
+          <p style="font-size:11px; color:rgba(255,255,255,0.35); text-transform:uppercase; letter-spacing:.08em; margin-bottom:12px;">📍 Veranstaltungsort</p>
+          <div style="position:relative; margin-bottom:12px;">
+            <input
+              v-model="locationSearch"
+              @input="onLocationSearchInput"
+              placeholder="Adresse oder Ort eingeben…"
+              style="width:100%; background:rgba(255,255,255,0.07); border:1px solid rgba(255,255,255,0.15); border-radius:8px; padding:9px 14px; color:#fff; font-size:14px; outline:none; box-sizing:border-box;"
+            />
+            <div v-if="locationResults.length > 0"
+              style="position:absolute; top:100%; left:0; right:0; background:#1a2035; border:1px solid rgba(255,255,255,0.12); border-radius:10px; margin-top:4px; overflow:hidden; z-index:100;">
+              <div v-for="r in locationResults" :key="r.display_name"
+                @click="selectLocation(r)"
+                style="padding:10px 14px; font-size:13px; cursor:pointer; border-bottom:1px solid rgba(255,255,255,0.05);"
+                @mouseenter="(e) => ((e.currentTarget as HTMLElement).style.background='rgba(6,182,212,0.1)')"
+                @mouseleave="(e) => ((e.currentTarget as HTMLElement).style.background='transparent')">
+                <strong style="display:block; color:#fff; font-size:13px;">{{ r.display_name.split(',')[0] }}</strong>
+                <span style="color:rgba(255,255,255,0.45); font-size:11px;">{{ r.display_name.split(',').slice(1).join(',').trim() }}</span>
+              </div>
+            </div>
+          </div>
+          <div id="event-location-map" style="height:160px; border-radius:12px; border:1px solid rgba(255,255,255,0.07); margin-bottom:12px;"></div>
+          <div style="display:flex; justify-content:flex-end; gap:8px;">
+            <button @click="locationSearch = ''; locationResults = []"
+              style="padding:7px 14px; border-radius:10px; background:transparent; border:1px solid rgba(255,255,255,0.12); color:rgba(255,255,255,0.5); cursor:pointer; font-size:12px;">
+              Zurücksetzen
+            </button>
+            <button @click="saveLocation" :disabled="!locationSearch"
+              :style="{ padding:'7px 14px', borderRadius:'10px', border:'none', fontWeight:600, fontSize:'12px', color:'#000',
+                background: event?.accent_color || '#06b6d4',
+                cursor: locationSearch ? 'pointer' : 'not-allowed',
+                opacity: locationSearch ? 1 : 0.5 }">
+              Ort speichern
+            </button>
+          </div>
+        </div>
+
+        <!-- ZEITRAUM-EDITOR PLATZHALTER (Task 12) -->
+        <div style="background:var(--bg-surface); border:1px solid var(--border); border-radius:16px; padding:20px;">
+          <p style="font-size:11px; color:rgba(255,255,255,0.35); text-transform:uppercase; letter-spacing:.08em; margin-bottom:12px;">📅 Zeitraum &amp; Termine</p>
+          <p style="font-size:13px; color:rgba(255,255,255,0.3);">Wird in einem späteren Schritt implementiert.</p>
+        </div>
+
+      </div>
+
+      <!-- KARTE (read-only, für alle wenn Koordinaten vorhanden) -->
+      <div v-if="event?.latitude && !isOrganizer"
+        style="background:var(--bg-surface); border:1px solid var(--border); border-radius:16px; overflow:hidden; margin-bottom:20px; height:180px;">
+        <div id="event-readonly-map" style="height:100%;"></div>
+      </div>
 
       <div style="display:grid; grid-template-columns:1fr 2fr; gap:20px;">
         <!-- Links -->

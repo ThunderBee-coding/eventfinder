@@ -1,10 +1,9 @@
 <script setup lang="ts">
-import { ref } from 'vue'
-
 const props = defineProps<{
   title: string
   description?: string
   locationName?: string
+  address?: string
   accentColor: string
   coverImagePath?: string
   participantCount?: number
@@ -14,21 +13,9 @@ const props = defineProps<{
 const emit = defineEmits<{
   invite: []
   editCover: []
+  editLocation: []
   updateLocation: [value: string]
 }>()
-
-const editingLocation = ref(false)
-const locationDraft = ref('')
-
-function startEditLocation() {
-  locationDraft.value = props.locationName ?? ''
-  editingLocation.value = true
-}
-
-function saveLocation() {
-  emit('updateLocation', locationDraft.value)
-  editingLocation.value = false
-}
 </script>
 
 <template>
@@ -50,28 +37,16 @@ function saveLocation() {
     <div style="position:absolute; inset:0; padding:28px 32px; display:flex; flex-direction:column; justify-content:flex-end;">
       <div style="display:flex; align-items:flex-end; justify-content:space-between; gap:16px;">
         <div style="flex:1; min-width:0;">
-          <!-- Ort: Anzeige oder Inline-Edit -->
-          <div v-if="isOrganizer && editingLocation" style="display:flex; align-items:center; gap:6px; margin-bottom:6px;">
-            <span style="font-size:13px; color:rgba(255,255,255,0.45);">📍</span>
-            <input
-              v-model="locationDraft"
-              @keyup.enter="saveLocation"
-              @keyup.escape="editingLocation = false"
-              placeholder="Ort eingeben…"
-              style="background:rgba(255,255,255,0.12); border:1px solid rgba(255,255,255,0.25); border-radius:6px; padding:3px 8px; color:#fff; font-size:13px; outline:none; width:220px;"
-              autofocus
-            />
-            <button @click="saveLocation" :style="{ background: accentColor, border:'none', borderRadius:'6px', padding:'3px 10px', color:'#000', fontWeight:700, fontSize:'12px', cursor:'pointer' }">✓</button>
-            <button @click="editingLocation = false" style="background:transparent; border:1px solid rgba(255,255,255,0.2); border-radius:6px; padding:3px 8px; color:rgba(255,255,255,0.5); font-size:12px; cursor:pointer;">✕</button>
-          </div>
-          <div v-else style="display:flex; align-items:center; gap:6px; margin-bottom:6px; min-height:22px;">
-            <p v-if="locationName" style="font-size:13px; color:rgba(255,255,255,0.45); margin:0;">📍 {{ locationName }}</p>
+          <!-- Ort: Anzeige + Edit-Button (Edit-State liegt in EventDetails) -->
+          <div style="display:flex; align-items:center; gap:6px; margin-bottom:6px; min-height:22px;">
+            <p v-if="address || locationName" style="font-size:13px; color:rgba(255,255,255,0.45); margin:0;">
+              📍 {{ address || locationName }}
+            </p>
             <button
               v-if="isOrganizer"
-              @click="startEditLocation"
-              :title="locationName ? 'Ort bearbeiten' : 'Ort hinzufügen'"
+              @click="emit('editLocation')"
               style="background:transparent; border:1px solid rgba(255,255,255,0.15); border-radius:5px; color:rgba(255,255,255,0.35); font-size:11px; cursor:pointer; padding:2px 7px; line-height:1.4;"
-            >{{ locationName ? '✏' : '+ Ort' }}</button>
+            >{{ (address || locationName) ? '✏ Ort ändern' : '+ Ort hinzufügen' }}</button>
           </div>
           <h1 style="font-size:26px; font-weight:700; letter-spacing:-0.5px; margin-bottom:8px; line-height:1.2;">{{ title }}</h1>
           <p v-if="description" style="font-size:14px; color:rgba(255,255,255,0.5); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{{ description }}</p>
