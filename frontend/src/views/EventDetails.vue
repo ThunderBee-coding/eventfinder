@@ -36,8 +36,42 @@ let locationSearchTimeout: ReturnType<typeof setTimeout> | null = null
 let mapInstance: LeafletMap | null = null
 let mapMarker: Marker | null = null
 
-// --- Stub für Task 10 (Wetter), wird von saveLocation aufgerufen ---
-async function loadWeatherHints() { /* Task 10 */ }
+// --- Task 10: Feiertage + Wetter ---
+const holidays = ref<Record<string, string>>({})
+const weatherHints = ref<Record<string, {
+  temp_max_median: number | null
+  temp_min_median: number | null
+  precip_median: number | null
+  loading: boolean
+  forecast_temp_max: number | null
+  forecast_temp_min: number | null
+  forecast_code: number | null
+}>>({})
+
+async function loadWeatherHints() {
+  if (!eventId) return
+  try {
+    const res = await axios.get(`/events/${eventId}/weather-hints`, { headers: headers() })
+    const map: Record<string, any> = {}
+    for (const h of res.data) map[h.date] = h
+    weatherHints.value = map
+  } catch (e) {
+    console.error('Weather hints load failed', e)
+  }
+}
+
+async function loadHolidays() {
+  if (!eventId) return
+  try {
+    const years = [...new Set(proposals.value.map((p: any) => p.proposed_date.slice(0, 4)))]
+    for (const year of years) {
+      const res = await axios.get(`/events/${eventId}/holidays?year=${year}`, { headers: headers() })
+      Object.assign(holidays.value, res.data)
+    }
+  } catch (e) {
+    console.error('Holidays load failed', e)
+  }
+}
 
 // --- Datums-Manager (nur Organisator) ---
 const showDateManager = ref(false)
@@ -131,6 +165,7 @@ async function load() {
   } finally {
     loading.value = false
   }
+  await Promise.all([loadHolidays(), loadWeatherHints()])
 }
 
 const isOrganizer = computed(() => event.value?.organizer_id === myUserId.value)
@@ -420,6 +455,8 @@ onMounted(async () => {
             :participant-count="participants.length"
             :accent-color="event.accent_color"
             :final-date="event.final_date"
+            :holidays="holidays"
+            :weather-hints="weatherHints"
             @date-click="onDateClick"
           />
         </div>

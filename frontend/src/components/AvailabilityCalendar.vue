@@ -7,6 +7,16 @@ const props = defineProps<{
   participantCount: number
   accentColor: string
   finalDate?: string
+  holidays?: Record<string, string>
+  weatherHints?: Record<string, {
+    temp_max_median: number | null
+    temp_min_median: number | null
+    precip_median: number | null
+    loading: boolean
+    forecast_temp_max: number | null
+    forecast_temp_min: number | null
+    forecast_code: number | null
+  }>
 }>()
 
 const emit = defineEmits<{ dateClick: [date: string] }>()
@@ -86,6 +96,26 @@ function nextMonth() {
   if (currentMonth.value === 11) { currentMonth.value = 0; currentYear.value++ }
   else currentMonth.value++
 }
+
+function isHoliday(day: number) {
+  return !!(props.holidays?.[isoDate(day)])
+}
+function holidayName(day: number) {
+  return props.holidays?.[isoDate(day)] || ''
+}
+function weatherHint(day: number) {
+  return props.weatherHints?.[isoDate(day)] || null
+}
+function weatherCodeIcon(code: number | null): string {
+  if (code === null) return ''
+  if (code === 0) return '☀️'
+  if (code <= 2) return '🌤'
+  if (code <= 49) return '🌫'
+  if (code <= 67) return '🌧'
+  if (code <= 77) return '❄️'
+  if (code <= 82) return '🌦'
+  return '⛈'
+}
 </script>
 
 <template>
@@ -104,9 +134,17 @@ function nextMonth() {
       <div v-for="i in firstDayOffset" :key="'e'+i" />
       <div v-for="day in daysInMonth" :key="day"
         :style="{
-          height: '38px', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center',
-          fontSize: '13px', fontWeight: isProposed(day) ? 600 : 400,
-          background: dayBg(day), color: dayColor(day),
+          height: '52px',
+          borderRadius: '8px',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          fontSize: '13px',
+          fontWeight: isProposed(day) ? 600 : 400,
+          position: 'relative',
+          background: dayBg(day),
+          color: dayColor(day),
           cursor: isProposed(day) && !isPast(day) ? 'pointer' : 'default',
           opacity: isPast(day) && isProposed(day) ? 0.35 : 1,
           boxShadow: finalDate === isoDate(day) ? `0 0 14px ${accentColor}99` : 'none',
@@ -114,13 +152,81 @@ function nextMonth() {
           transition: 'all .15s',
         }"
         @click="isProposed(day) && !isPast(day) && emit('dateClick', isoDate(day))">
-        {{ day }}
+
+        <!-- Feiertag-Punkt -->
+        <div v-if="isHoliday(day)"
+          style="position:absolute; top:4px; right:4px; width:5px; height:5px; border-radius:50%; background:#f97316;" />
+
+        <span style="line-height:1;">{{ day }}</span>
+
+        <!-- Wetter-Badge -->
+        <span v-if="isProposed(day) && weatherHint(day) && !weatherHint(day)!.loading && weatherHint(day)!.temp_max_median !== null"
+          style="font-size:9px; color:rgba(255,255,255,0.4); line-height:1; margin-top:1px; white-space:nowrap;">
+          {{ Math.round(weatherHint(day)!.temp_max_median!) }}°/{{ Math.round(weatherHint(day)!.temp_min_median!) }}°
+        </span>
+        <span v-else-if="isProposed(day) && weatherHint(day)?.loading"
+          style="font-size:9px; color:rgba(255,255,255,0.2); line-height:1; margin-top:1px;">⏳</span>
+
+        <!-- Wetter-Tooltip (CSS :hover) -->
+        <div v-if="isProposed(day)" class="weather-cal-tooltip">
+          <template v-if="weatherHint(day)?.loading">
+            <p style="font-size:11px; color:rgba(255,255,255,0.4); text-align:center; margin:0;">Wetterdaten laden…</p>
+          </template>
+          <template v-else-if="weatherHint(day)?.temp_max_median !== null">
+            <div style="display:flex; justify-content:space-between; font-size:12px; margin-bottom:3px;">
+              <span style="color:rgba(255,255,255,0.5);">🌡 Ø Hoch</span>
+              <b>{{ Math.round(weatherHint(day)!.temp_max_median!) }}°C</b>
+            </div>
+            <div style="display:flex; justify-content:space-between; font-size:12px; margin-bottom:3px;">
+              <span style="color:rgba(255,255,255,0.5);">🌡 Ø Tief</span>
+              <b>{{ Math.round(weatherHint(day)!.temp_min_median!) }}°C</b>
+            </div>
+            <div style="display:flex; justify-content:space-between; font-size:12px; margin-bottom:5px;">
+              <span style="color:rgba(255,255,255,0.5);">🌧 Regen Ø</span>
+              <b>{{ weatherHint(day)!.precip_median?.toFixed(1) ?? '—' }} mm</b>
+            </div>
+            <p style="font-size:10px; color:rgba(255,255,255,0.25); text-align:center; margin:0 0 4px;">Klimamittel 2005–2024</p>
+            <div v-if="weatherHint(day)!.forecast_temp_max !== null"
+              style="background:rgba(6,182,212,0.12); border:1px solid rgba(6,182,212,0.25); border-radius:6px; padding:4px 8px; text-align:center; font-size:11px; color:#06b6d4;">
+              📡 {{ weatherCodeIcon(weatherHint(day)!.forecast_code) }} {{ Math.round(weatherHint(day)!.forecast_temp_max!) }}°C
+            </div>
+          </template>
+          <p v-if="isHoliday(day)"
+            style="font-size:11px; color:#f97316; text-align:center; margin:5px 0 0;">
+            🎉 {{ holidayName(day) }}
+          </p>
+        </div>
       </div>
     </div>
     <div style="display:flex; gap:16px; margin-top:16px; flex-wrap:wrap;">
       <span style="display:flex; align-items:center; gap:6px; font-size:12px; color:rgba(255,255,255,0.4);"><span style="width:10px;height:10px;border-radius:50%;background:#10b981;display:inline-block"/>Mehrheit: gut</span>
       <span style="display:flex; align-items:center; gap:6px; font-size:12px; color:rgba(255,255,255,0.4);"><span style="width:10px;height:10px;border-radius:50%;background:#f59e0b;display:inline-block"/>Möglich</span>
       <span style="display:flex; align-items:center; gap:6px; font-size:12px; color:rgba(255,255,255,0.4);"><span style="width:10px;height:10px;border-radius:50%;background:#f43f5e;display:inline-block"/>Nicht möglich</span>
+      <span style="display:flex; align-items:center; gap:6px; font-size:12px; color:rgba(255,255,255,0.4);">
+        <span style="width:6px;height:6px;border-radius:50%;background:#f97316;display:inline-block;"></span>Feiertag
+      </span>
     </div>
   </div>
 </template>
+
+<style scoped>
+.weather-cal-tooltip {
+  display: none;
+  position: absolute;
+  bottom: 110%;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #1a2035;
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 10px;
+  padding: 10px 12px;
+  width: 180px;
+  z-index: 300;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+  pointer-events: none;
+  white-space: normal;
+}
+div:hover > .weather-cal-tooltip {
+  display: block;
+}
+</style>
