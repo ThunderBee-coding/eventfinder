@@ -88,7 +88,7 @@ def send_magic_link_email(email: str, token: str):
     body = (
         f"Klicke auf den folgenden Link, um dich bei EventFinder anzumelden:\n"
         f"{magic_link}\n\n"
-        f"Der Link ist 1 Stunde gültig und kann nur einmal verwendet werden.\n\n"
+        f"Der Link ist 30 Tage gültig und kann nur einmal verwendet werden.\n\n"
         f"Falls du keinen Anmelde-Link angefordert hast, kannst du diese E-Mail ignorieren."
     )
     return asyncio.run(_send_email(subject, email, body, settings))

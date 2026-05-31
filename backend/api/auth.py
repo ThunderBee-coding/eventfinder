@@ -38,7 +38,7 @@ async def request_magic_link(request: schemas.MagicLinkRequest, db: AsyncSession
     
     # Generate token
     token = secrets.token_urlsafe(32)
-    expires_at = datetime.utcnow() + timedelta(hours=1)
+    expires_at = datetime.utcnow() + timedelta(days=30)
     
     magic_link = models.MagicLink(
         user_id=user.id,
