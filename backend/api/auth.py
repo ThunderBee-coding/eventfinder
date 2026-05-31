@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, func
 from datetime import datetime, timedelta
 import secrets
 import uuid
@@ -20,10 +20,16 @@ async def request_magic_link(request: schemas.MagicLinkRequest, db: AsyncSession
     user = result.scalar_one_or_none()
     
     if not user:
+        count_result = await db.execute(
+            select(func.count()).select_from(models.User)
+        )
+        user_count = count_result.scalar() or 0
+        role = models.UserRole.superadmin if user_count == 0 else models.UserRole.participant
+
         user = models.User(
             email=request.email,
-            name=request.email.split("@")[0], # Default name from email
-            role=models.UserRole.participant
+            name=request.email.split("@")[0],
+            role=role,
         )
         db.add(user)
         await db.flush()
