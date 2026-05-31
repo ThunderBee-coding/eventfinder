@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import axios from 'axios'
+import { useRouter } from 'vue-router'
 import { useAuth } from '../composables/useAuth'
 import CreateEventModal from '../components/CreateEventModal.vue'
 
@@ -36,6 +37,16 @@ function cardHover(el: HTMLElement, accent: string, enter: boolean) {
   el.style.transform = enter ? 'translateY(-2px)' : 'translateY(0)'
 }
 
+const router = useRouter()
+
+const isAdmin = computed(() => {
+  try {
+    const token = localStorage.getItem('token') ?? ''
+    const payload = JSON.parse(atob(token.split('.')[1]))
+    return payload.role === 'superadmin'
+  } catch { return false }
+})
+
 onMounted(fetchEvents)
 </script>
 
@@ -48,6 +59,11 @@ onMounted(fetchEvents)
         <button @click="showCreate = true"
           style="display:flex; align-items:center; gap:6px; background:#06b6d4; color:#000; border:none; padding:9px 18px; border-radius:10px; font-weight:600; font-size:14px; cursor:pointer; box-shadow:0 0 20px rgba(6,182,212,0.4);">
           ＋ Neues Event
+        </button>
+        <button v-if="isAdmin" @click="router.push('/admin/settings')"
+          style="background:transparent; border:1px solid rgba(255,255,255,0.1); color:rgba(255,255,255,0.5); padding:9px 12px; border-radius:10px; cursor:pointer; font-size:14px;"
+          title="Einstellungen">
+          ⚙️
         </button>
         <button @click="logout"
           style="background:transparent; border:1px solid var(--border); color:var(--text-secondary); padding:9px 14px; border-radius:10px; cursor:pointer; font-size:13px;">

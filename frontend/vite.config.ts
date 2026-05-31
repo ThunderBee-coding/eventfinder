@@ -11,6 +11,7 @@ export default defineConfig({
       '/auth': { target: 'http://backend:8000', changeOrigin: true },
       '/events': { target: 'http://backend:8000', changeOrigin: true },
       '/uploads': { target: 'http://backend:8000', changeOrigin: true },
+      '/api':     { target: 'http://backend:8000', changeOrigin: true },
     },
   },
 })
