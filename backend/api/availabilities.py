@@ -52,16 +52,39 @@ async def set_availability(
     await db.refresh(db_availability)
     return db_availability
 
-@router.get("/{event_id}/availability", response_model=List[schemas.AvailabilityResponse])
+@router.get("/{event_id}/availability", response_model=List[schemas.AvailabilityWithName])
 async def get_event_availabilities(
     event_id: uuid.UUID,
     current_user: models.User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
-    # Get all availabilities for this event
+    # Check if user is participant
+    part_check = await db.execute(
+        select(models.EventParticipant)
+        .where(models.EventParticipant.event_id == event_id)
+        .where(models.EventParticipant.user_id == current_user.id)
+    )
+    if not part_check.scalar_one_or_none():
+        raise HTTPException(status_code=403, detail="Not a participant")
+
     result = await db.execute(
-        select(models.Availability)
-        .join(models.EventParticipant)
+        select(
+            models.Availability,
+            models.User.name.label("participant_name"),
+        )
+        .join(models.EventParticipant, models.EventParticipant.id == models.Availability.participant_id)
+        .join(models.User, models.User.id == models.EventParticipant.user_id)
         .where(models.EventParticipant.event_id == event_id)
     )
-    return result.scalars().all()
+    rows = result.all()
+    return [
+        schemas.AvailabilityWithName(
+            id=row.Availability.id,
+            participant_id=row.Availability.participant_id,
+            event_date=row.Availability.event_date,
+            status=row.Availability.status,
+            comment=row.Availability.comment,
+            participant_name=row.participant_name or "",
+        )
+        for row in rows
+    ]
