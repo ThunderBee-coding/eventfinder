@@ -1,6 +1,6 @@
 <!-- frontend/src/views/EventDetails.vue -->
 <script setup lang="ts">
-import { ref, onMounted, computed, nextTick } from 'vue'
+import { ref, onMounted, onBeforeUnmount, computed, nextTick } from 'vue'
 import { useRoute } from 'vue-router'
 import axios from 'axios'
 import type { Map as LeafletMap, Marker } from 'leaflet'
@@ -296,22 +296,33 @@ async function transferOrganizer(userId: string) {
   await load()
 }
 
+onBeforeUnmount(() => {
+  // Leaflet-Instanz sauber zerstören um "already initialized"-Fehler bei Rückkehr zu vermeiden
+  try { mapInstance?.remove() } catch (_) { /* ignore */ }
+  mapInstance = null
+  mapMarker = null
+})
+
 onMounted(async () => {
   await load()
-  // Karte für Nicht-Organisatoren initialisieren
-  if (event.value?.latitude && !isOrganizer.value) {
-    await nextTick()
-    mapInstance = await initMap('event-readonly-map', event.value.latitude, event.value.longitude) as any
-  }
-  // Orts-Karte für Organizer initialisieren
-  if (isOrganizer.value) {
-    await nextTick()
-    locationSearch.value = event.value?.address || event.value?.location_name || ''
-    mapInstance = await initMap('event-location-map', event.value?.latitude, event.value?.longitude) as any
-    if (mapInstance && event.value?.latitude && event.value?.longitude) {
-      const L = await import('leaflet')
-      mapMarker = L.marker([event.value.latitude, event.value.longitude]).addTo(mapInstance)
+  if (!event.value) return  // load() fehlgeschlagen — kein Map-Init nötig
+
+  try {
+    if (event.value?.latitude && !isOrganizer.value) {
+      await nextTick()
+      mapInstance = await initMap('event-readonly-map', event.value.latitude, event.value.longitude) as any
     }
+    if (isOrganizer.value) {
+      await nextTick()
+      locationSearch.value = event.value?.address || event.value?.location_name || ''
+      mapInstance = await initMap('event-location-map', event.value?.latitude, event.value?.longitude) as any
+      if (mapInstance && event.value?.latitude && event.value?.longitude) {
+        const L = await import('leaflet')
+        mapMarker = L.marker([event.value.latitude, event.value.longitude]).addTo(mapInstance)
+      }
+    }
+  } catch (e) {
+    console.error('Map init failed:', e)  // Leaflet-Fehler blockieren nicht den Rest der Seite
   }
 })
 </script>
@@ -329,7 +340,13 @@ onMounted(async () => {
       Lade Event...
     </div>
 
-    <main v-else-if="event" style="max-width:1000px; margin:0 auto; padding:32px 24px;">
+    <div v-else-if="!event" style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:60vh; gap:16px; color:var(--text-secondary);">
+      <p style="font-size:18px;">Event konnte nicht geladen werden.</p>
+      <p style="font-size:14px; opacity:0.6;">Möglicherweise bist du nicht Teilnehmer dieses Events oder deine Sitzung ist abgelaufen.</p>
+      <router-link to="/" style="color:#06b6d4; text-decoration:none; border:1px solid rgba(6,182,212,0.3); padding:10px 20px; border-radius:10px; font-size:14px;">← Zurück zum Dashboard</router-link>
+    </div>
+
+    <main v-else style="max-width:1000px; margin:0 auto; padding:32px 24px;">
       <EventHero
         :title="event.title"
         :description="event.description"
