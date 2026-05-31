@@ -13,6 +13,7 @@ from api import auth as api_auth
 from api import events as api_events
 from api import availabilities as api_availabilities
 from api import admin_settings as api_admin_settings
+from api import geocode as api_geocode
 
 app = FastAPI(title="EventFinder API")
 
@@ -28,6 +29,7 @@ app.include_router(api_auth.router, prefix="/auth", tags=["auth"])
 app.include_router(api_events.router, prefix="/events", tags=["events"])
 app.include_router(api_availabilities.router, prefix="/events", tags=["availabilities"])
 app.include_router(api_admin_settings.router, prefix="/api/admin", tags=["admin"])
+app.include_router(api_geocode.router, tags=["geocode"])
 
 os.makedirs("/app/uploads", exist_ok=True)
 app.mount("/uploads", StaticFiles(directory="/app/uploads"), name="uploads")
