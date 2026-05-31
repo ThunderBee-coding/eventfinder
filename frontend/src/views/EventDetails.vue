@@ -387,10 +387,74 @@ onMounted(async () => {
           </div>
         </div>
 
-        <!-- ZEITRAUM-EDITOR PLATZHALTER (Task 12) -->
+        <!-- ZEITRAUM-EDITOR -->
         <div style="background:var(--bg-surface); border:1px solid var(--border); border-radius:16px; padding:20px;">
           <p style="font-size:11px; color:rgba(255,255,255,0.35); text-transform:uppercase; letter-spacing:.08em; margin-bottom:12px;">📅 Zeitraum &amp; Termine</p>
-          <p style="font-size:13px; color:rgba(255,255,255,0.3);">Wird in einem späteren Schritt implementiert.</p>
+
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:14px;">
+            <div>
+              <label style="font-size:11px;color:rgba(255,255,255,0.35);display:block;margin-bottom:5px;">Von</label>
+              <input type="date" v-model="dmFrom"
+                style="width:100%;background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.12);border-radius:8px;padding:8px 12px;color:#fff;font-size:13px;outline:none;color-scheme:dark;box-sizing:border-box;" />
+            </div>
+            <div>
+              <label style="font-size:11px;color:rgba(255,255,255,0.35);display:block;margin-bottom:5px;">Bis</label>
+              <input type="date" v-model="dmTo"
+                style="width:100%;background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.12);border-radius:8px;padding:8px 12px;color:#fff;font-size:13px;outline:none;color-scheme:dark;box-sizing:border-box;" />
+            </div>
+          </div>
+
+          <label style="font-size:11px;color:rgba(255,255,255,0.35);display:block;margin-bottom:8px;">Wochentage</label>
+          <div style="display:flex;gap:5px;margin-bottom:12px;flex-wrap:wrap;">
+            <button v-for="(label, i) in WEEKDAY_LABELS" :key="i" @click="dmToggleDay(i)"
+              :style="{
+                padding:'4px 10px', borderRadius:'7px', border:'1px solid', cursor:'pointer', fontSize:'12px',
+                borderColor: dmWeekdays.includes(i) ? `${event.accent_color}88` : 'rgba(255,255,255,0.1)',
+                background: dmWeekdays.includes(i) ? `${event.accent_color}18` : 'transparent',
+                color: dmWeekdays.includes(i) ? '#fff' : 'rgba(255,255,255,0.35)',
+                fontWeight: dmWeekdays.includes(i) ? '500' : '400',
+              }">{{ label }}</button>
+          </div>
+
+          <button @click="dmGenerate"
+            :style="{ width:'100%', padding:'8px', borderRadius:'10px', border:'none', cursor:'pointer', fontWeight:600, fontSize:'13px', color:'#000', background: event.accent_color, marginBottom:'12px' }">
+            Termine generieren
+          </button>
+
+          <!-- Vorschau -->
+          <div v-if="dmDates.length > 0" style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.07);border-radius:10px;padding:10px 12px;margin-bottom:12px;">
+            <p style="font-size:11px;color:rgba(255,255,255,0.3);margin:0 0 8px;">{{ dmDates.length }} Termine</p>
+            <div style="display:flex;flex-wrap:wrap;gap:5px;max-height:100px;overflow-y:auto;">
+              <span v-for="d in dmDates" :key="d"
+                :style="{
+                  background: holidays?.[d] ? 'rgba(249,115,22,0.12)' : 'rgba(6,182,212,0.1)',
+                  border: `1px solid ${holidays?.[d] ? 'rgba(249,115,22,0.3)' : 'rgba(6,182,212,0.25)'}`,
+                  borderRadius:'6px', padding:'3px 8px', fontSize:'11px',
+                  color: holidays?.[d] ? '#f97316' : '#06b6d4',
+                  display:'flex', alignItems:'center', gap:'4px',
+                }">
+                {{ formatDateShort(d) }}{{ holidays?.[d] ? ' 🎉' : '' }}
+                <button @click="dmRemoveDate(d)" style="background:none;border:none;color:rgba(244,63,94,0.6);cursor:pointer;font-size:13px;padding:0;line-height:1;">×</button>
+              </span>
+            </div>
+          </div>
+          <p v-if="dmDates.length === 0 && (dmFrom || dmTo)" style="font-size:12px;color:rgba(255,255,255,0.25);margin:0 0 12px;">Noch keine Termine generiert.</p>
+
+          <p style="font-size:11px;color:rgba(249,115,22,0.6);margin:0 0 12px;">🎉 Feiertage werden markiert, aber nicht ausgeschlossen</p>
+
+          <div style="display:flex;justify-content:flex-end;gap:8px;">
+            <button @click="dmDates = []"
+              style="padding:7px 14px;border-radius:10px;background:transparent;border:1px solid rgba(255,255,255,0.12);color:rgba(255,255,255,0.5);cursor:pointer;font-size:12px;">
+              Leeren
+            </button>
+            <button @click="dmSave" :disabled="dmSaving || dmDates.length === 0"
+              :style="{ padding:'7px 16px', borderRadius:'10px', border:'none', fontWeight:600, fontSize:'12px', color:'#000',
+                background: event.accent_color,
+                cursor: dmDates.length > 0 ? 'pointer' : 'not-allowed',
+                opacity: dmDates.length === 0 ? 0.5 : 1 }">
+              {{ dmSaving ? 'Speichern…' : `${dmDates.length} Termine speichern` }}
+            </button>
+          </div>
         </div>
 
       </div>
