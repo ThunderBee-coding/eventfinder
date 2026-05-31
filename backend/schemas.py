@@ -58,6 +58,7 @@ class EventResponse(EventBase):
 
 class ParticipantResponse(BaseModel):
     id: uuid.UUID
+    participant_id: uuid.UUID
     name: str
     email: str
     joined_at: datetime

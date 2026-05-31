@@ -96,11 +96,12 @@ async function load() {
   try {
     const token = localStorage.getItem('token') ?? ''
     try {
-      const payload = JSON.parse(atob(token.split('.')[1]))
+      const b64 = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')
+      const payload = JSON.parse(atob(b64))
       myUserId.value = payload.sub
     } catch (e) {
       console.error('JWT decode failed:', e)
-      return
+      // kein return — API-Calls laufen weiter, myUserId bleibt null
     }
 
     const [evRes, pRes, propRes, avRes] = await Promise.all([
@@ -122,7 +123,12 @@ async function load() {
 
 const isOrganizer = computed(() => event.value?.organizer_id === myUserId.value)
 const proposedDateStrings = computed(() => proposals.value.map((p: any) => p.proposed_date))
-const allAvailabilities = computed(() => availabilities.value.map((a: any) => ({ ...a, own: true })))
+const myParticipantId = computed(() =>
+  participants.value.find((p: any) => p.id === myUserId.value)?.participant_id
+)
+const allAvailabilities = computed(() =>
+  availabilities.value.map((a: any) => ({ ...a, own: String(a.participant_id) === String(myParticipantId.value) }))
+)
 
 function onDateClick(date: string) {
   selectedDate.value = date

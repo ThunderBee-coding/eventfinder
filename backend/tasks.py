@@ -60,17 +60,21 @@ async def _send_email(
 
 
 @celery_app.task
-def send_invitation_email(recipient_email: str, inviter_name: str, event_title: str, token: str):
+def send_invitation_email(recipient_email: str, inviter_name: str, event_title: str, token: str, event_id: str = ""):
     settings = _get_smtp_settings()
-    frontend_url = settings.get("frontend_url", "http://localhost:5173")
-    magic_link = f"{frontend_url}/login?token={token}"
-    subject = f"Einladung: {event_title}"
+    base_url = settings.get("frontend_url", "http://localhost:5173").rstrip("/")
+    magic_link = f"{base_url}/login?token={token}"
+    if event_id:
+        magic_link += f"&event={event_id}"
+    subject = f"Einladung zum Event: {event_title}"
     body = (
         f"Hallo,\n\n"
         f"{inviter_name} hat dich zum Event \"{event_title}\" eingeladen.\n\n"
-        f"Klicke auf den folgenden Link, um die Einladung anzunehmen und dich anzumelden:\n"
+        f"Klicke auf den folgenden Link, um die Einladung anzunehmen:\n"
         f"{magic_link}\n\n"
-        f"Der Link ist 24 Stunden gültig."
+        f"Du wirst direkt zum Event weitergeleitet, wo du deine Verfügbarkeit eintragen kannst.\n"
+        f"Der Link ist 24 Stunden gültig und kann nur einmal verwendet werden.\n\n"
+        f"Falls du diese Einladung nicht erwartet hast, kannst du diese E-Mail ignorieren."
     )
     return asyncio.run(_send_email(subject, recipient_email, body, settings))
 
@@ -78,12 +82,13 @@ def send_invitation_email(recipient_email: str, inviter_name: str, event_title: 
 @celery_app.task
 def send_magic_link_email(email: str, token: str):
     settings = _get_smtp_settings()
-    frontend_url = settings.get("frontend_url", "http://localhost:5173")
-    magic_link = f"{frontend_url}/login?token={token}"
-    subject = "Dein Magic Link für EventFinder"
+    base_url = settings.get("frontend_url", "http://localhost:5173").rstrip("/")
+    magic_link = f"{base_url}/login?token={token}"
+    subject = "Dein Anmelde-Link für EventFinder"
     body = (
-        f"Klicke auf den folgenden Link, um dich anzumelden:\n"
+        f"Klicke auf den folgenden Link, um dich bei EventFinder anzumelden:\n"
         f"{magic_link}\n\n"
-        f"Der Link ist 1 Stunde gültig."
+        f"Der Link ist 1 Stunde gültig und kann nur einmal verwendet werden.\n\n"
+        f"Falls du keinen Anmelde-Link angefordert hast, kannst du diese E-Mail ignorieren."
     )
     return asyncio.run(_send_email(subject, email, body, settings))

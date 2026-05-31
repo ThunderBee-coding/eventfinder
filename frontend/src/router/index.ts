@@ -19,7 +19,8 @@ router.beforeEach((to, from, next) => {
   if (to.meta.requiresAdmin && !token) return next('/login')
   if (to.meta.requiresAdmin) {
     try {
-      const payload = JSON.parse(atob(token!.split('.')[1]))
+      const b64 = token!.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')
+      const payload = JSON.parse(atob(b64))
       if (payload.role !== 'superadmin') return next('/')
     } catch {
       return next('/login')

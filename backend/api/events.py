@@ -183,6 +183,7 @@ async def get_participants(
     result = await db.execute(
         select(
             models.User.id,
+            models.EventParticipant.id.label("participant_id"),
             models.User.name,
             models.User.email,
             models.User.role,
@@ -192,13 +193,12 @@ async def get_participants(
         .join(models.EventParticipant, models.EventParticipant.user_id == models.User.id)
         .outerjoin(models.Availability, models.Availability.participant_id == models.EventParticipant.id)
         .where(models.EventParticipant.event_id == event_id)
-        .where(models.User.role != models.UserRole.superadmin)
-        .group_by(models.User.id, models.User.name, models.User.email, models.User.role, models.EventParticipant.joined_at)
+        .group_by(models.User.id, models.EventParticipant.id, models.User.name, models.User.email, models.User.role, models.EventParticipant.joined_at)
     )
     rows = result.all()
     return [
         schemas.ParticipantResponse(
-            id=r.id, name=r.name, email=r.email,
+            id=r.id, participant_id=r.participant_id, name=r.name, email=r.email,
             joined_at=r.joined_at, availability_count=r.availability_count
         )
         for r in rows
@@ -302,6 +302,7 @@ async def invite_participant(
         inviter_name=current_user.name,
         event_title=event.title,
         token=token,
+        event_id=str(event_id),
     )
 
     return {"message": f"{email} eingeladen"}
