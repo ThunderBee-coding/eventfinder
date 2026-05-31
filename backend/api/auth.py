@@ -21,7 +21,7 @@ async def request_magic_link(request: schemas.MagicLinkRequest, db: AsyncSession
     
     if not user:
         count_result = await db.execute(
-            select(func.count()).select_from(models.User)
+            select(func.count()).select_from(models.User).with_for_update()
         )
         user_count = count_result.scalar() or 0
         role = models.UserRole.superadmin if user_count == 0 else models.UserRole.participant
