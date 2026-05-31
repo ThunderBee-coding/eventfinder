@@ -417,10 +417,12 @@ onMounted(async () => {
             <DateProposals
               :proposals="proposals"
               :availabilities="allAvailabilities"
+              :participants="participants"
               :participant-count="participants.length"
               :accent-color="event.accent_color"
               :final-date="event.final_date"
               :is-organizer="isOrganizer"
+              :holidays="holidays"
               @set-final="setFinalDate($event)"
             />
           </div>
