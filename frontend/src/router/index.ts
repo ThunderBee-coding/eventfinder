@@ -16,6 +16,7 @@ const router = createRouter({ history: createWebHistory(), routes })
 router.beforeEach((to, from, next) => {
   const token = localStorage.getItem('token')
   if (to.meta.requiresAuth && !token) return next('/login')
+  if (to.meta.requiresAdmin && !token) return next('/login')
   if (to.meta.requiresAdmin) {
     try {
       const payload = JSON.parse(atob(token!.split('.')[1]))
