@@ -1,10 +1,11 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, delete
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from datetime import datetime
 from typing import Any
 import os
+import uuid
 
 import redis as redis_lib
 
@@ -125,3 +126,56 @@ async def test_mail(
         return {"success": True}
     except Exception as e:
         return {"success": False, "error": str(e)}
+
+
+@router.get("/users")
+async def get_all_users(
+    _: models.User = Depends(require_superadmin),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(models.User)
+        .where(models.User.role != models.UserRole.superadmin)
+        .order_by(models.User.name)
+    )
+    return [{"id": str(u.id), "name": u.name, "email": u.email} for u in result.scalars().all()]
+
+
+@router.get("/rotation")
+async def get_rotation(
+    _: models.User = Depends(require_superadmin),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(models.OrganizerRotation, models.User)
+        .join(models.User, models.OrganizerRotation.user_id == models.User.id)
+        .order_by(models.OrganizerRotation.order_index)
+    )
+    return [
+        {
+            "user_id": str(rot.user_id),
+            "name": user.name,
+            "email": user.email,
+            "order_index": rot.order_index,
+            "is_active": rot.is_active,
+            "last_organized_at": rot.last_organized_at,
+        }
+        for rot, user in result.all()
+    ]
+
+
+@router.put("/rotation")
+async def set_rotation(
+    body: list[dict],
+    _: models.User = Depends(require_superadmin),
+    db: AsyncSession = Depends(get_db),
+):
+    await db.execute(delete(models.OrganizerRotation))
+    for i, entry in enumerate(body):
+        db.add(models.OrganizerRotation(
+            user_id=uuid.UUID(entry["user_id"]),
+            order_index=i,
+            is_active=entry.get("is_active", True),
+        ))
+    await db.commit()
+    return {"ok": True}

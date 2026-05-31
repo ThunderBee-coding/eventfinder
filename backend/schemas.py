@@ -74,6 +74,9 @@ class DateProposalResponse(BaseModel):
 class DateProposalsSet(BaseModel):
     dates: List[date]
 
+class OrganizerTransfer(BaseModel):
+    user_id: uuid.UUID
+
 class AvailabilityBase(BaseModel):
     event_date: date
     status: AvailabilityStatus

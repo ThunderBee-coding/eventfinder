@@ -2,9 +2,10 @@ from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from typing import List
-from datetime import datetime
+from datetime import datetime, timedelta
 import uuid
 import os
+import secrets
 
 from database import get_db
 import models
@@ -184,13 +185,15 @@ async def get_participants(
             models.User.id,
             models.User.name,
             models.User.email,
+            models.User.role,
             models.EventParticipant.joined_at,
             func.count(models.Availability.id).label("availability_count"),
         )
         .join(models.EventParticipant, models.EventParticipant.user_id == models.User.id)
         .outerjoin(models.Availability, models.Availability.participant_id == models.EventParticipant.id)
         .where(models.EventParticipant.event_id == event_id)
-        .group_by(models.User.id, models.User.name, models.User.email, models.EventParticipant.joined_at)
+        .where(models.User.role != models.UserRole.superadmin)
+        .group_by(models.User.id, models.User.name, models.User.email, models.User.role, models.EventParticipant.joined_at)
     )
     rows = result.all()
     return [
@@ -202,6 +205,57 @@ async def get_participants(
     ]
 
 
+@router.delete("/{event_id}/participants/{user_id}", status_code=204)
+async def remove_participant(
+    event_id: uuid.UUID,
+    user_id: uuid.UUID,
+    current_user: models.User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    event = await _get_event_as_participant(event_id, current_user, db)
+    if event.organizer_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Only the organizer can remove participants")
+    if user_id == current_user.id:
+        raise HTTPException(status_code=400, detail="Cannot remove yourself")
+
+    result = await db.execute(
+        select(models.EventParticipant)
+        .where(models.EventParticipant.event_id == event_id)
+        .where(models.EventParticipant.user_id == user_id)
+    )
+    participant = result.scalar_one_or_none()
+    if not participant:
+        raise HTTPException(status_code=404, detail="Participant not found")
+
+    await db.delete(participant)
+    await db.commit()
+
+
+@router.patch("/{event_id}/organizer", response_model=schemas.EventResponse)
+async def transfer_organizer(
+    event_id: uuid.UUID,
+    body: schemas.OrganizerTransfer,
+    current_user: models.User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    event = await _get_event_as_participant(event_id, current_user, db)
+    if event.organizer_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Only the current organizer can transfer this role")
+
+    result = await db.execute(
+        select(models.EventParticipant)
+        .where(models.EventParticipant.event_id == event_id)
+        .where(models.EventParticipant.user_id == body.user_id)
+    )
+    if not result.scalar_one_or_none():
+        raise HTTPException(status_code=400, detail="User is not a participant of this event")
+
+    event.organizer_id = body.user_id
+    await db.commit()
+    await db.refresh(event)
+    return event
+
+
 @router.post("/{event_id}/invite", status_code=200)
 async def invite_participant(
     event_id: uuid.UUID,
@@ -209,6 +263,8 @@ async def invite_participant(
     current_user: models.User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    from tasks import send_invitation_email
+
     event = await _get_event_as_participant(event_id, current_user, db)
     if event.organizer_id != current_user.id:
         raise HTTPException(status_code=403, detail="Only the organizer can invite participants")
@@ -223,15 +279,31 @@ async def invite_participant(
         db.add(user)
         await db.flush()
 
-    result = await db.execute(
+    already_participant = await db.execute(
         select(models.EventParticipant)
         .where(models.EventParticipant.event_id == event_id)
         .where(models.EventParticipant.user_id == user.id)
     )
-    if not result.scalar_one_or_none():
+    if not already_participant.scalar_one_or_none():
         db.add(models.EventParticipant(event_id=event_id, user_id=user.id))
 
+    # Magic Link für Einladungs-E-Mail (24h gültig)
+    token = secrets.token_urlsafe(32)
+    db.add(models.MagicLink(
+        user_id=user.id,
+        token=token,
+        expires_at=datetime.utcnow() + timedelta(hours=24),
+    ))
+
     await db.commit()
+
+    send_invitation_email.delay(
+        recipient_email=email,
+        inviter_name=current_user.name,
+        event_title=event.title,
+        token=token,
+    )
+
     return {"message": f"{email} eingeladen"}
 
 
