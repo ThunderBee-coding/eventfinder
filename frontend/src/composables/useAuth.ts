@@ -1,4 +1,3 @@
-import axios from 'axios'
 import { useRouter } from 'vue-router'
 
 export function useAuth() {
@@ -11,13 +10,6 @@ export function useAuth() {
     router.push('/login')
   }
 
-  axios.interceptors.response.use(
-    res => res,
-    err => {
-      if (err.response?.status === 401) logout()
-      return Promise.reject(err)
-    }
-  )
-
+  // Interceptor wird einmalig in main.ts registriert, nicht hier
   return { token, headers, logout }
 }
