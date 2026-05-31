@@ -381,3 +381,109 @@ async def set_proposals(
     db.add_all(new_proposals)
     await db.commit()
     return new_proposals
+
+
+@router.get("/{event_id}/holidays")
+async def get_holidays(
+    event_id: uuid.UUID,
+    year: int = 2026,
+    current_user: models.User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    event = await _get_event_as_participant(event_id, current_user, db)
+    from holidays import get_german_holidays
+    bundesland = event.bundesland or "NATIONAL"
+    raw = await get_german_holidays(year, bundesland)
+    result = {}
+    for name, info in raw.items():
+        if isinstance(info, dict) and "datum" in info:
+            result[info["datum"]] = name.replace("_", " ")
+    return result
+
+
+@router.get("/{event_id}/weather-hints")
+async def get_weather_hints(
+    event_id: uuid.UUID,
+    current_user: models.User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    import httpx
+    from datetime import date as date_type
+
+    event = await _get_event_as_participant(event_id, current_user, db)
+
+    proposals_result = await db.execute(
+        select(models.DateProposal)
+        .where(models.DateProposal.event_id == event_id)
+        .order_by(models.DateProposal.proposed_date)
+    )
+    proposals = proposals_result.scalars().all()
+
+    if not proposals:
+        return []
+
+    today = date_type.today()
+    hints = []
+
+    if event.latitude and event.longitude:
+        lat_grid = round(event.latitude * 4) / 4
+        lon_grid = round(event.longitude * 4) / 4
+
+        wh_result = await db.execute(
+            select(models.WeatherHistory)
+            .where(models.WeatherHistory.lat_grid == lat_grid)
+            .where(models.WeatherHistory.lon_grid == lon_grid)
+        )
+        wh_map = {(w.month, w.day): w for w in wh_result.scalars().all()}
+
+        # Forecast for dates within 16 days (one API call)
+        forecast_map = {}
+        forecast_dates = [p.proposed_date for p in proposals if 0 <= (p.proposed_date - today).days <= 16]
+        if forecast_dates:
+            try:
+                async with httpx.AsyncClient(timeout=10.0) as client:
+                    resp = await client.get(
+                        "https://api.open-meteo.com/v1/forecast",
+                        params={
+                            "latitude": event.latitude,
+                            "longitude": event.longitude,
+                            "daily": "temperature_2m_max,temperature_2m_min,weathercode",
+                            "timezone": "Europe/Berlin",
+                            "start_date": forecast_dates[0].isoformat(),
+                            "end_date": forecast_dates[-1].isoformat(),
+                        }
+                    )
+                    fdata = resp.json().get("daily", {})
+                    for i, d in enumerate(fdata.get("time", [])):
+                        forecast_map[d] = {
+                            "temp_max": fdata["temperature_2m_max"][i],
+                            "temp_min": fdata["temperature_2m_min"][i],
+                            "code": fdata.get("weathercode", [None] * (i + 1))[i],
+                        }
+            except Exception as e:
+                print(f"Forecast fetch failed: {e}")
+
+        for p in proposals:
+            d = p.proposed_date
+            wh = wh_map.get((d.month, d.day))
+            fc = forecast_map.get(d.isoformat())
+            hints.append({
+                "date": d.isoformat(),
+                "temp_max_median": wh.temp_max_median if wh else None,
+                "temp_min_median": wh.temp_min_median if wh else None,
+                "precip_median": wh.precip_median if wh else None,
+                "loading": wh is None,
+                "forecast_temp_max": fc["temp_max"] if fc else None,
+                "forecast_temp_min": fc["temp_min"] if fc else None,
+                "forecast_code": fc["code"] if fc else None,
+            })
+    else:
+        for p in proposals:
+            hints.append({
+                "date": p.proposed_date.isoformat(),
+                "temp_max_median": None, "temp_min_median": None,
+                "precip_median": None, "loading": False,
+                "forecast_temp_max": None, "forecast_temp_min": None, "forecast_code": None,
+            })
+
+    return hints
