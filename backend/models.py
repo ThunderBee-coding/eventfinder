@@ -139,3 +139,11 @@ class DateProposal(Base):
     event: Mapped["Event"] = relationship(back_populates="proposals")
 
     __table_args__ = (UniqueConstraint("event_id", "proposed_date", name="uq_event_date_proposal"),)
+
+class AppSetting(Base):
+    __tablename__ = "app_settings"
+
+    key: Mapped[str] = mapped_column(String(100), primary_key=True)
+    value: Mapped[str] = mapped_column(Text, nullable=False)
+    is_encrypted: Mapped[bool] = mapped_column(default=False)
+    updated_at: Mapped[datetime] = mapped_column(default=datetime.utcnow, onupdate=datetime.utcnow)
