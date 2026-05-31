@@ -1,0 +1,519 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EventFinder — Design Mockup v2</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg-base: #080b14;
+    --bg-surface: #0d1117;
+    --bg-card: #111827;
+    --border: rgba(255,255,255,0.07);
+    --text: #fff;
+    --text-secondary: rgba(255,255,255,0.5);
+    --text-muted: rgba(255,255,255,0.25);
+    --cyan: #06b6d4;
+    --green: #10b981;
+    --yellow: #f59e0b;
+    --red: #f43f5e;
+  }
+  body { background: var(--bg-base); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; min-height: 100vh; }
+
+  /* NAV */
+  .nav { padding: 14px 32px; border-bottom: 1px solid var(--border); background: rgba(8,11,20,0.85); backdrop-filter: blur(12px); position: sticky; top: 0; z-index: 50; display: flex; align-items: center; gap: 12px; }
+  .nav a { color: var(--text-secondary); text-decoration: none; font-size: 13px; }
+  .nav span { color: var(--border); }
+  .nav strong { font-size: 13px; font-weight: 600; }
+
+  /* HERO */
+  .hero { position: relative; border-radius: 20px; overflow: hidden; height: 230px; box-shadow: 0 20px 60px rgba(6,182,212,0.2); }
+  .hero-bg { position: absolute; inset: 0; background: linear-gradient(135deg, rgba(6,182,212,0.15) 0%, #080b14 100%); }
+  .hero-overlay { position: absolute; inset: 0; background: linear-gradient(to top, rgba(8,11,20,0.95) 0%, rgba(8,11,20,0.3) 100%); }
+  .hero-line { position: absolute; bottom: 0; left: 0; right: 0; height: 1px; background: linear-gradient(90deg, transparent, var(--cyan), transparent); }
+  .hero-content { position: absolute; inset: 0; padding: 28px 32px; display: flex; flex-direction: column; justify-content: flex-end; }
+  .hero-bottom { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; }
+  .hero-actions { display: flex; flex-direction: column; gap: 8px; flex-shrink: 0; }
+
+  /* LOCATION ROW */
+  .loc-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+  .loc-tag { font-size: 13px; color: var(--text-secondary); }
+  .loc-addr { font-size: 13px; color: rgba(255,255,255,0.6); }
+  .loc-edit-btn { background: transparent; border: 1px solid rgba(255,255,255,0.15); border-radius: 5px; color: var(--text-muted); font-size: 11px; cursor: pointer; padding: 2px 8px; line-height: 1.5; }
+
+  /* LOCATION SEARCH */
+  .loc-search-wrap { position: relative; }
+  .loc-search { width: 100%; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.2); border-radius: 8px; padding: 9px 14px; color: #fff; font-size: 14px; outline: none; }
+  .loc-search:focus { border-color: var(--cyan); }
+  .loc-dropdown { position: absolute; top: 100%; left: 0; right: 0; background: #1a2035; border: 1px solid rgba(255,255,255,0.12); border-radius: 10px; margin-top: 4px; overflow: hidden; z-index: 100; }
+  .loc-opt { padding: 10px 14px; font-size: 13px; cursor: pointer; border-bottom: 1px solid rgba(255,255,255,0.05); }
+  .loc-opt:hover { background: rgba(6,182,212,0.1); }
+  .loc-opt strong { display: block; color: #fff; }
+  .loc-opt span { color: var(--text-secondary); font-size: 12px; }
+
+  /* MAP */
+  #map { height: 200px; border-radius: 12px; border: 1px solid var(--border); margin-top: 12px; }
+
+  /* GRID */
+  .main-grid { display: grid; grid-template-columns: 1fr 2fr; gap: 20px; margin-top: 28px; }
+  .card { background: var(--bg-surface); border: 1px solid var(--border); border-radius: 16px; padding: 20px; }
+  .card-label { font-size: 11px; color: rgba(255,255,255,0.35); text-transform: uppercase; letter-spacing: .08em; margin-bottom: 14px; }
+
+  /* DATE PROPOSALS */
+  .proposal-row { padding: 10px 0; border-bottom: 1px solid rgba(255,255,255,0.05); position: relative; }
+  .proposal-row:last-child { border-bottom: none; }
+  .proposal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+  .proposal-date { font-size: 13px; font-weight: 600; }
+  .proposal-holiday { font-size: 11px; color: #f97316; background: rgba(249,115,22,0.12); border: 1px solid rgba(249,115,22,0.25); border-radius: 4px; padding: 1px 7px; }
+  .vote-bar { display: flex; height: 6px; border-radius: 3px; overflow: hidden; gap: 1px; margin-bottom: 6px; }
+  .vote-bar-seg { height: 100%; border-radius: 2px; }
+  .vote-counts { display: flex; gap: 12px; font-size: 11px; }
+  .vote-count { display: flex; align-items: center; gap: 4px; cursor: default; position: relative; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
+
+  /* TOOLTIP */
+  .tooltip { display: none; position: absolute; left: 0; bottom: 100%; margin-bottom: 6px; background: #1a2035; border: 1px solid rgba(255,255,255,0.12); border-radius: 10px; padding: 10px 14px; width: 240px; z-index: 200; box-shadow: 0 8px 24px rgba(0,0,0,0.5); }
+  .proposal-row:hover .tooltip { display: block; }
+  .tooltip-row { display: flex; align-items: center; justify-content: space-between; padding: 3px 0; font-size: 12px; }
+  .tooltip-name { color: rgba(255,255,255,0.8); }
+  .tooltip-status { font-size: 11px; font-weight: 600; padding: 1px 7px; border-radius: 4px; }
+  .s-best { background: rgba(16,185,129,0.15); color: #10b981; }
+  .s-possible { background: rgba(245,158,11,0.15); color: #f59e0b; }
+  .s-impossible { background: rgba(244,63,94,0.15); color: #f43f5e; }
+
+  /* CALENDAR */
+  .cal-nav { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+  .cal-nav-btn { background: rgba(255,255,255,0.06); border: none; color: #fff; width: 30px; height: 30px; border-radius: 8px; cursor: pointer; font-size: 16px; }
+  .cal-grid { display: grid; grid-template-columns: repeat(7,1fr); gap: 4px; }
+  .cal-head { text-align: center; font-size: 11px; color: rgba(255,255,255,0.3); padding: 4px 0; }
+  .cal-day { height: 48px; border-radius: 8px; display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 13px; position: relative; border: 1px solid transparent; transition: all .15s; }
+  .cal-day.empty { background: transparent; }
+  .cal-day.past { color: rgba(255,255,255,0.2); background: transparent; cursor: default; }
+  .cal-day.past.proposed { background: rgba(244,63,94,0.06); color: rgba(244,63,94,0.35); cursor: default; }
+  .cal-day.proposed { cursor: pointer; font-weight: 600; }
+  .cal-day.proposed.best { background: rgba(16,185,129,0.2); color: #10b981; }
+  .cal-day.proposed.possible { background: rgba(245,158,11,0.18); color: #f59e0b; }
+  .cal-day.holiday .holiday-dot { position: absolute; top: 4px; right: 4px; width: 5px; height: 5px; border-radius: 50%; background: #f97316; }
+  .cal-day.has-weather .weather-badge { position: absolute; bottom: 3px; font-size: 9px; color: rgba(255,255,255,0.4); white-space: nowrap; }
+  .cal-day-num { line-height: 1; }
+
+  /* WEATHER TOOLTIP */
+  .weather-tooltip { display: none; position: absolute; bottom: 110%; left: 50%; transform: translateX(-50%); background: #1a2035; border: 1px solid rgba(255,255,255,0.12); border-radius: 10px; padding: 10px 12px; width: 180px; z-index: 300; box-shadow: 0 8px 24px rgba(0,0,0,0.5); font-size: 12px; }
+  .cal-day:hover .weather-tooltip { display: block; }
+  .weather-row { display: flex; justify-content: space-between; align-items: center; padding: 2px 0; }
+  .weather-label { color: var(--text-secondary); }
+  .weather-val { font-weight: 600; }
+  .weather-forecast-badge { margin-top: 6px; padding: 4px 8px; background: rgba(6,182,212,0.1); border: 1px solid rgba(6,182,212,0.2); border-radius: 6px; text-align: center; color: var(--cyan); font-size: 11px; }
+  .weather-hist-note { margin-top: 4px; font-size: 10px; color: var(--text-muted); text-align: center; }
+
+  /* LEGEND */
+  .legend { display: flex; gap: 14px; margin-top: 14px; flex-wrap: wrap; }
+  .legend-item { display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--text-secondary); }
+
+  /* BUTTONS */
+  .btn-cyan { background: var(--cyan); color: #000; border: none; padding: 9px 16px; border-radius: 10px; cursor: pointer; font-weight: 600; font-size: 13px; white-space: nowrap; }
+  .btn-ghost { background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.12); color: rgba(255,255,255,0.7); padding: 9px 16px; border-radius: 10px; cursor: pointer; font-size: 13px; }
+
+  /* SECTION LABELS */
+  .section-label { font-size: 10px; color: rgba(255,255,255,0.3); text-transform: uppercase; letter-spacing: .1em; margin-bottom: 6px; }
+
+  /* MOCKUP BANNER */
+  .mockup-banner { background: rgba(6,182,212,0.08); border: 1px solid rgba(6,182,212,0.2); border-radius: 12px; padding: 12px 20px; margin-bottom: 24px; display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--cyan); }
+</style>
+</head>
+<body>
+
+<div class="nav">
+  <a href="/">← Dashboard</a>
+  <span>|</span>
+  <strong>Studententreffen 2026</strong>
+</div>
+
+<main style="max-width:1000px; margin:0 auto; padding:28px 24px;">
+
+  <div class="mockup-banner">
+    🎨 <strong>Design Mockup v2</strong> — Neue Features: Ortssuche + Karte · Abstimmungsstatistik · Feiertage · Wetter-Tooltips · Vergangene Termine gesperrt
+  </div>
+
+  <!-- HERO -->
+  <div class="hero" style="margin-bottom:28px;">
+    <div class="hero-bg"></div>
+    <div class="hero-overlay"></div>
+    <div class="hero-line"></div>
+    <div class="hero-content">
+      <div class="hero-bottom">
+        <div style="flex:1; min-width:0;">
+          <div class="loc-row">
+            <span class="loc-tag">📍</span>
+            <span class="loc-addr">Hauptstraße 12, 80331 München, Bayern</span>
+            <button class="loc-edit-btn">✏ Ort ändern</button>
+          </div>
+          <h1 style="font-size:26px; font-weight:700; letter-spacing:-0.5px; margin-bottom:6px;">Studententreffen 2026</h1>
+          <p style="color:rgba(255,255,255,0.45); font-size:13px;">Jährliches Wiedersehen der alten Clique</p>
+          <p style="color:rgba(255,255,255,0.3); font-size:13px; margin-top:6px;">👥 4 Teilnehmer</p>
+        </div>
+        <div class="hero-actions">
+          <button class="btn-cyan">+ Einladen</button>
+          <button class="btn-ghost">🖼 Cover</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- EDITORS: ORT + ZEITRAUM nebeneinander -->
+  <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:20px;">
+
+    <!-- LOCATION EDITOR -->
+    <div class="card">
+      <p class="card-label">📍 Veranstaltungsort</p>
+      <div class="loc-search-wrap" style="margin-bottom:12px;">
+        <input class="loc-search" value="Hauptstraße 12, München" placeholder="Adresse eingeben…" />
+        <div class="loc-dropdown">
+          <div class="loc-opt" style="background:rgba(6,182,212,0.08);">
+            <strong>Hauptstraße 12, 80331 München</strong>
+            <span>Altstadt-Lehel, München, Bayern, Deutschland</span>
+          </div>
+          <div class="loc-opt">
+            <strong>Hauptstraße 12, 80797 München</strong>
+            <span>Maxvorstadt, München, Bayern, Deutschland</span>
+          </div>
+          <div class="loc-opt">
+            <strong>Hauptstraße 12, 85716 Unterschleißheim</strong>
+            <span>Unterschleißheim, Bayern, Deutschland</span>
+          </div>
+        </div>
+      </div>
+      <div id="map" style="height:160px;"></div>
+      <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:12px;">
+        <button class="btn-ghost" style="font-size:12px; padding:7px 14px;">Abbrechen</button>
+        <button class="btn-cyan" style="font-size:12px; padding:7px 14px;">Ort speichern</button>
+      </div>
+    </div>
+
+    <!-- ZEITRAUM EDITOR -->
+    <div class="card">
+      <p class="card-label">📅 Zeitraum &amp; Termine</p>
+
+      <!-- Von / Bis -->
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:14px;">
+        <div>
+          <label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:5px;">Von</label>
+          <input type="date" value="2026-06-13"
+            style="width:100%;background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.15);border-radius:8px;padding:8px 12px;color:#fff;font-size:13px;outline:none;color-scheme:dark;" />
+        </div>
+        <div>
+          <label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:5px;">Bis</label>
+          <input type="date" value="2026-09-20"
+            style="width:100%;background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.15);border-radius:8px;padding:8px 12px;color:#fff;font-size:13px;outline:none;color-scheme:dark;" />
+        </div>
+      </div>
+
+      <!-- Wochentage -->
+      <label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:8px;">Wochentage</label>
+      <div style="display:flex;gap:5px;margin-bottom:14px;flex-wrap:wrap;">
+        <button style="padding:4px 11px;border-radius:7px;border:1px solid rgba(255,255,255,0.1);background:transparent;color:rgba(255,255,255,0.35);font-size:12px;cursor:pointer;">So</button>
+        <button style="padding:4px 11px;border-radius:7px;border:1px solid rgba(6,182,212,0.5);background:rgba(6,182,212,0.12);color:#fff;font-size:12px;cursor:pointer;font-weight:500;">Mo</button>
+        <button style="padding:4px 11px;border-radius:7px;border:1px solid rgba(255,255,255,0.1);background:transparent;color:rgba(255,255,255,0.35);font-size:12px;cursor:pointer;">Di</button>
+        <button style="padding:4px 11px;border-radius:7px;border:1px solid rgba(255,255,255,0.1);background:transparent;color:rgba(255,255,255,0.35);font-size:12px;cursor:pointer;">Mi</button>
+        <button style="padding:4px 11px;border-radius:7px;border:1px solid rgba(255,255,255,0.1);background:transparent;color:rgba(255,255,255,0.35);font-size:12px;cursor:pointer;">Do</button>
+        <button style="padding:4px 11px;border-radius:7px;border:1px solid rgba(255,255,255,0.1);background:transparent;color:rgba(255,255,255,0.35);font-size:12px;cursor:pointer;">Fr</button>
+        <button style="padding:4px 11px;border-radius:7px;border:1px solid rgba(6,182,212,0.5);background:rgba(6,182,212,0.12);color:#fff;font-size:12px;cursor:pointer;font-weight:500;">Sa</button>
+      </div>
+
+      <!-- Vorschau generierter Termine -->
+      <div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.07);border-radius:10px;padding:10px 12px;margin-bottom:14px;">
+        <div style="font-size:11px;color:var(--text-muted);margin-bottom:8px;">Vorschau — 15 Termine generiert</div>
+        <div style="display:flex;flex-wrap:wrap;gap:5px;">
+          <span style="background:rgba(6,182,212,0.1);border:1px solid rgba(6,182,212,0.2);border-radius:6px;padding:3px 8px;font-size:11px;color:var(--cyan);">Mo 15. Jun</span>
+          <span style="background:rgba(6,182,212,0.1);border:1px solid rgba(6,182,212,0.2);border-radius:6px;padding:3px 8px;font-size:11px;color:var(--cyan);">Sa 20. Jun</span>
+          <span style="background:rgba(6,182,212,0.1);border:1px solid rgba(6,182,212,0.2);border-radius:6px;padding:3px 8px;font-size:11px;color:var(--cyan);">Mo 22. Jun</span>
+          <span style="background:rgba(6,182,212,0.1);border:1px solid rgba(6,182,212,0.2);border-radius:6px;padding:3px 8px;font-size:11px;color:var(--cyan);">Sa 27. Jun</span>
+          <span style="background:rgba(249,115,22,0.1);border:1px solid rgba(249,115,22,0.25);border-radius:6px;padding:3px 8px;font-size:11px;color:#f97316;" title="Fronleichnam">Sa 4. Jul 🎉</span>
+          <span style="background:rgba(6,182,212,0.1);border:1px solid rgba(6,182,212,0.2);border-radius:6px;padding:3px 8px;font-size:11px;color:var(--cyan);">Mo 6. Jul</span>
+          <span style="font-size:11px;color:var(--text-muted);padding:3px 4px;align-self:center;">+9 weitere…</span>
+        </div>
+      </div>
+
+      <!-- Hinweis Feiertage -->
+      <div style="display:flex;align-items:center;gap:6px;font-size:11px;color:rgba(249,115,22,0.7);margin-bottom:14px;">
+        <span>🎉</span> Feiertage werden in der Vorschau markiert, aber nicht ausgeschlossen
+      </div>
+
+      <div style="display:flex; justify-content:flex-end; gap:8px;">
+        <button class="btn-ghost" style="font-size:12px; padding:7px 14px;">Abbrechen</button>
+        <button class="btn-cyan" style="font-size:12px; padding:7px 14px;">15 Termine speichern</button>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="main-grid">
+
+    <!-- LINKE SPALTE -->
+    <div style="display:flex; flex-direction:column; gap:16px;">
+
+      <!-- DATUMSVORSCHLÄGE MIT STATISTIK -->
+      <div class="card">
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:14px;">
+          <p class="card-label" style="margin:0;">Datumsvorschläge</p>
+          <button style="font-size:12px; color:var(--cyan); background:transparent; border:1px solid rgba(6,182,212,0.3); border-radius:6px; padding:3px 10px; cursor:pointer;">✏ Termine</button>
+        </div>
+
+        <!-- Legende -->
+        <div style="display:flex; gap:12px; margin-bottom:12px; flex-wrap:wrap;">
+          <span style="display:flex;align-items:center;gap:4px;font-size:10px;color:var(--text-muted);"><span class="dot" style="background:var(--green);"></span>Sehr gut</span>
+          <span style="display:flex;align-items:center;gap:4px;font-size:10px;color:var(--text-muted);"><span class="dot" style="background:var(--yellow);"></span>Möglich</span>
+          <span style="display:flex;align-items:center;gap:4px;font-size:10px;color:var(--text-muted);"><span class="dot" style="background:var(--red);"></span>Nicht möglich</span>
+          <span style="display:flex;align-items:center;gap:4px;font-size:10px;color:var(--text-muted);"><span class="dot" style="background:rgba(255,255,255,0.15);"></span>Ausstehend</span>
+        </div>
+
+        <!-- Datum 1: Sa, 13. Jun -->
+        <div class="proposal-row">
+          <div class="tooltip">
+            <div style="font-size:10px;color:var(--text-muted);margin-bottom:6px;text-transform:uppercase;letter-spacing:.06em;">Wer hat wie abgestimmt</div>
+            <div class="tooltip-row"><span class="tooltip-name">🟢 Björn Sander</span><span class="tooltip-status s-best">Sehr gut</span></div>
+            <div class="tooltip-row"><span class="tooltip-name">🟢 neoopenclawagent</span><span class="tooltip-status s-best">Sehr gut</span></div>
+            <div class="tooltip-row"><span class="tooltip-name">🟡 SuperAdmin</span><span class="tooltip-status s-possible">Möglich</span></div>
+            <div class="tooltip-row" style="opacity:0.45;"><span class="tooltip-name">⏳ Gast (ausstehend)</span><span style="font-size:11px;color:var(--text-muted);">—</span></div>
+          </div>
+          <div class="proposal-header">
+            <span class="proposal-date">Sa, 13. Jun 2026</span>
+          </div>
+          <div class="vote-bar">
+            <div class="vote-bar-seg" style="width:50%;background:var(--green);"></div>
+            <div class="vote-bar-seg" style="width:25%;background:var(--yellow);"></div>
+            <div class="vote-bar-seg" style="width:25%;background:rgba(255,255,255,0.12);"></div>
+          </div>
+          <div class="vote-counts">
+            <span class="vote-count"><span class="dot" style="background:var(--green);"></span><b style="color:var(--green)">2</b>&nbsp;sehr gut</span>
+            <span class="vote-count"><span class="dot" style="background:var(--yellow);"></span><b style="color:var(--yellow)">1</b>&nbsp;möglich</span>
+            <span class="vote-count"><span class="dot" style="background:rgba(255,255,255,0.2);"></span><b style="color:rgba(255,255,255,0.3)">1</b>&nbsp;offen</span>
+          </div>
+        </div>
+
+        <!-- Datum 2: Sa, 20. Jun -->
+        <div class="proposal-row">
+          <div class="tooltip">
+            <div style="font-size:10px;color:var(--text-muted);margin-bottom:6px;text-transform:uppercase;letter-spacing:.06em;">Wer hat wie abgestimmt</div>
+            <div class="tooltip-row"><span class="tooltip-name">🔴 Björn Sander</span><span class="tooltip-status s-impossible">Nicht möglich</span></div>
+            <div class="tooltip-row"><span class="tooltip-name">🟡 neoopenclawagent</span><span class="tooltip-status s-possible">Möglich</span></div>
+            <div class="tooltip-row"><span class="tooltip-name">🟢 SuperAdmin</span><span class="tooltip-status s-best">Sehr gut</span></div>
+            <div class="tooltip-row"><span class="tooltip-name">🔴 Gast</span><span class="tooltip-status s-impossible">Nicht möglich</span></div>
+          </div>
+          <div class="proposal-header">
+            <span class="proposal-date">Sa, 20. Jun 2026</span>
+            <span class="proposal-holiday">Fronleichnam 🎉</span>
+          </div>
+          <div class="vote-bar">
+            <div class="vote-bar-seg" style="width:25%;background:var(--green);"></div>
+            <div class="vote-bar-seg" style="width:25%;background:var(--yellow);"></div>
+            <div class="vote-bar-seg" style="width:50%;background:var(--red);"></div>
+          </div>
+          <div class="vote-counts">
+            <span class="vote-count"><span class="dot" style="background:var(--green);"></span><b style="color:var(--green)">1</b>&nbsp;sehr gut</span>
+            <span class="vote-count"><span class="dot" style="background:var(--yellow);"></span><b style="color:var(--yellow)">1</b>&nbsp;möglich</span>
+            <span class="vote-count"><span class="dot" style="background:var(--red);"></span><b style="color:var(--red)">2</b>&nbsp;nicht möglich</span>
+          </div>
+        </div>
+
+        <!-- Datum 3: Sa, 27. Jun — Vergangenheit (simuliert) -->
+        <div class="proposal-row" style="opacity:0.45;">
+          <div class="proposal-header">
+            <span class="proposal-date" style="text-decoration:line-through; color:var(--text-muted);">Sa, 27. Jun 2026</span>
+            <span style="font-size:11px; color:var(--red); background:rgba(244,63,94,0.1); border:1px solid rgba(244,63,94,0.2); border-radius:4px; padding:1px 7px;">Vergangenheit</span>
+          </div>
+          <div class="vote-bar">
+            <div class="vote-bar-seg" style="width:100%;background:rgba(244,63,94,0.15);"></div>
+          </div>
+          <div style="font-size:11px; color:var(--text-muted); margin-top:3px;">Automatisch als nicht möglich markiert</div>
+        </div>
+
+        <!-- Datum 4: Sa, 4. Jul — nur offen -->
+        <div class="proposal-row">
+          <div class="tooltip">
+            <div style="font-size:10px;color:var(--text-muted);margin-bottom:6px;text-transform:uppercase;letter-spacing:.06em;">Wer hat wie abgestimmt</div>
+            <div class="tooltip-row" style="opacity:0.45;"><span class="tooltip-name">⏳ Björn Sander</span><span style="font-size:11px;color:var(--text-muted);">ausstehend</span></div>
+            <div class="tooltip-row" style="opacity:0.45;"><span class="tooltip-name">⏳ neoopenclawagent</span><span style="font-size:11px;color:var(--text-muted);">ausstehend</span></div>
+            <div class="tooltip-row" style="opacity:0.45;"><span class="tooltip-name">⏳ SuperAdmin</span><span style="font-size:11px;color:var(--text-muted);">ausstehend</span></div>
+            <div class="tooltip-row" style="opacity:0.45;"><span class="tooltip-name">⏳ Gast</span><span style="font-size:11px;color:var(--text-muted);">ausstehend</span></div>
+          </div>
+          <div class="proposal-header">
+            <span class="proposal-date">Sa, 4. Jul 2026</span>
+          </div>
+          <div class="vote-bar">
+            <div class="vote-bar-seg" style="width:100%;background:rgba(255,255,255,0.08);"></div>
+          </div>
+          <div style="font-size:11px; color:var(--text-muted); margin-top:3px;">4 Abstimmungen ausstehend</div>
+        </div>
+      </div>
+
+      <!-- TEILNEHMER -->
+      <div class="card">
+        <p class="card-label">Teilnehmer (4)</p>
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid rgba(255,255,255,0.05);">
+          <div style="display:flex;align-items:center;gap:10px;">
+            <div style="width:32px;height:32px;border-radius:50%;background:var(--cyan);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:#000;">BS</div>
+            <div><p style="font-size:14px;font-weight:500;">Björn Sander</p><p style="font-size:11px;color:rgba(255,255,255,0.3);">bjoern.sander@gmx.de</p></div>
+          </div>
+          <span style="font-size:12px;color:var(--green);">1/3</span>
+        </div>
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid rgba(255,255,255,0.05);">
+          <div style="display:flex;align-items:center;gap:10px;">
+            <div style="width:32px;height:32px;border-radius:50%;background:rgba(255,255,255,0.1);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;">SA</div>
+            <div><p style="font-size:14px;font-weight:500;">SuperAdmin</p><p style="font-size:11px;color:rgba(255,255,255,0.3);">thunderbee732@gmail.com</p></div>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <span style="font-size:12px;color:var(--yellow);">1/3</span>
+            <button style="background:transparent;border:1px solid rgba(244,63,94,0.25);border-radius:6px;color:rgba(244,63,94,0.6);cursor:pointer;padding:3px 7px;font-size:13px;">×</button>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;">
+          <div style="display:flex;align-items:center;gap:10px;">
+            <div style="width:32px;height:32px;border-radius:50%;background:rgba(255,255,255,0.1);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;">NA</div>
+            <div><p style="font-size:14px;font-weight:500;">neoopenclawagent</p><p style="font-size:11px;color:rgba(255,255,255,0.3);">neoopenclawagent@gmail.com</p></div>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <span style="font-size:12px;color:rgba(255,255,255,0.3);">Ausstehend</span>
+            <button style="background:transparent;border:1px solid rgba(244,63,94,0.25);border-radius:6px;color:rgba(244,63,94,0.6);cursor:pointer;padding:3px 7px;font-size:13px;">×</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- RECHTE SPALTE: KALENDER -->
+    <div class="card">
+      <p style="font-size:11px;color:rgba(255,255,255,0.35);text-transform:uppercase;letter-spacing:.08em;margin-bottom:14px;">Verfügbarkeit abstimmen</p>
+      <p style="font-size:12px;color:var(--text-secondary);margin-bottom:18px;">Klicke auf einen Termin um deine Verfügbarkeit anzugeben. Hover für Wetter-Info.</p>
+
+      <div class="cal-nav">
+        <span style="font-weight:600;font-size:16px;">Juni 2026</span>
+        <div>
+          <button class="cal-nav-btn">‹</button>
+          <button class="cal-nav-btn" style="margin-left:4px;">›</button>
+        </div>
+      </div>
+
+      <div class="cal-grid" style="margin-bottom:6px;">
+        <div class="cal-head">Mo</div><div class="cal-head">Di</div><div class="cal-head">Mi</div>
+        <div class="cal-head">Do</div><div class="cal-head">Fr</div><div class="cal-head">Sa</div><div class="cal-head">So</div>
+      </div>
+
+      <div class="cal-grid">
+        <!-- Offset: Jun 1 = Monday = 0 -->
+        <!-- Week 1 -->
+        <div class="cal-day proposed possible">
+          <div class="cal-day-num">1</div>
+          <div class="weather-badge">20°/13°</div>
+          <div class="weather-tooltip">
+            <div class="weather-row"><span class="weather-label">🌡 Ø Hoch</span><span class="weather-val">20°C</span></div>
+            <div class="weather-row"><span class="weather-label">🌡 Ø Tief</span><span class="weather-val">13°C</span></div>
+            <div class="weather-row"><span class="weather-label">🌧 Regen</span><span class="weather-val">4 mm</span></div>
+            <div class="weather-hist-note">Klimamittel 2005–2024</div>
+          </div>
+        </div>
+        <div class="cal-day">2</div>
+        <div class="cal-day">3</div>
+        <div class="cal-day">4</div>
+        <div class="cal-day">5</div>
+        <div class="cal-day proposed best holiday">
+          <div class="holiday-dot"></div>
+          <div class="cal-day-num">6</div>
+          <div class="weather-badge">23°/14°</div>
+          <div class="weather-tooltip">
+            <div class="weather-row"><span class="weather-label">🌡 Ø Hoch</span><span class="weather-val">23°C</span></div>
+            <div class="weather-row"><span class="weather-label">🌡 Ø Tief</span><span class="weather-val">14°C</span></div>
+            <div class="weather-row"><span class="weather-label">🌧 Regen</span><span class="weather-val">2 mm</span></div>
+            <div class="weather-hist-note">Klimamittel 2005–2024</div>
+            <div style="margin-top:5px;padding-top:5px;border-top:1px solid rgba(255,255,255,0.08);">
+              <div style="font-size:10px;color:var(--text-muted);margin-bottom:3px;">Pfingstsonntag 🎉</div>
+            </div>
+          </div>
+        </div>
+        <div class="cal-day">7</div>
+        <!-- Week 2 -->
+        <div class="cal-day">8</div>
+        <div class="cal-day">9</div>
+        <div class="cal-day">10</div>
+        <div class="cal-day">11</div>
+        <div class="cal-day">12</div>
+        <div class="cal-day proposed best" style="border-color:rgba(6,182,212,0.4);">
+          <div class="cal-day-num">13</div>
+          <div class="weather-badge">24°/15°</div>
+          <div class="weather-tooltip">
+            <div class="weather-row"><span class="weather-label">🌡 Ø Hoch</span><span class="weather-val">24°C</span></div>
+            <div class="weather-row"><span class="weather-label">🌡 Ø Tief</span><span class="weather-val">15°C</span></div>
+            <div class="weather-row"><span class="weather-label">🌧 Regen</span><span class="weather-val">3 mm</span></div>
+            <div class="weather-hist-note">Klimamittel 2005–2024</div>
+            <div class="weather-forecast-badge">📡 Vorhersage: 26°C, sonnig</div>
+          </div>
+        </div>
+        <div class="cal-day">14</div>
+        <!-- Week 3 -->
+        <div class="cal-day">15</div>
+        <div class="cal-day">16</div>
+        <div class="cal-day">17</div>
+        <div class="cal-day">18</div>
+        <div class="cal-day">19</div>
+        <div class="cal-day proposed possible holiday">
+          <div class="holiday-dot"></div>
+          <div class="cal-day-num">20</div>
+          <div class="weather-badge">22°/14°</div>
+          <div class="weather-tooltip">
+            <div class="weather-row"><span class="weather-label">🌡 Ø Hoch</span><span class="weather-val">22°C</span></div>
+            <div class="weather-row"><span class="weather-label">🌡 Ø Tief</span><span class="weather-val">14°C</span></div>
+            <div class="weather-row"><span class="weather-label">🌧 Regen</span><span class="weather-val">5 mm</span></div>
+            <div class="weather-hist-note">Klimamittel 2005–2024</div>
+            <div style="margin-top:5px;padding-top:5px;border-top:1px solid rgba(255,255,255,0.08);">
+              <div style="font-size:10px;color:var(--text-muted);margin-bottom:3px;">Fronleichnam 🎉</div>
+            </div>
+          </div>
+        </div>
+        <div class="cal-day">21</div>
+        <!-- Week 4 -->
+        <div class="cal-day">22</div>
+        <div class="cal-day">23</div>
+        <div class="cal-day">24</div>
+        <div class="cal-day">25</div>
+        <div class="cal-day">26</div>
+        <div class="cal-day proposed past" title="In der Vergangenheit — nicht mehr wählbar">
+          <div class="cal-day-num">27</div>
+        </div>
+        <div class="cal-day">28</div>
+        <!-- Week 5 -->
+        <div class="cal-day">29</div>
+        <div class="cal-day">30</div>
+      </div>
+
+      <div class="legend">
+        <div class="legend-item"><span style="width:10px;height:10px;border-radius:50%;background:var(--green);display:inline-block;"></span>Mehrheit: sehr gut</div>
+        <div class="legend-item"><span style="width:10px;height:10px;border-radius:50%;background:var(--yellow);display:inline-block;"></span>Möglich</div>
+        <div class="legend-item"><span style="width:10px;height:10px;border-radius:50%;background:var(--red);display:inline-block;"></span>Nicht möglich</div>
+        <div class="legend-item"><span style="width:5px;height:5px;border-radius:50%;background:#f97316;display:inline-block;margin-right:3px;"></span>Feiertag</div>
+        <div class="legend-item" style="color:rgba(255,255,255,0.18);"><span style="width:10px;height:10px;border-radius:50%;background:rgba(244,63,94,0.2);display:inline-block;"></span>Vergangenheit</div>
+      </div>
+    </div>
+  </div>
+</main>
+
+<script>
+// Leaflet Karte
+const map = L.map('map', { zoomControl: true, attributionControl: false }).setView([48.137, 11.576], 14);
+L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+  attribution: '© OpenStreetMap © CARTO'
+}).addTo(map);
+
+const icon = L.divIcon({
+  html: `<div style="width:28px;height:28px;border-radius:50%;background:#06b6d4;border:3px solid #fff;box-shadow:0 0 12px rgba(6,182,212,0.6);display:flex;align-items:center;justify-content:center;font-size:14px;">📍</div>`,
+  className: '',
+  iconSize: [28, 28],
+  iconAnchor: [14, 14]
+});
+L.marker([48.137, 11.576], { icon }).addTo(map)
+  .bindPopup('<b>Hauptstraße 12</b><br>80331 München');
+</script>
+
+</body>
+</html>
