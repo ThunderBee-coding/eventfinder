@@ -70,6 +70,8 @@ class Event(Base):
     updated_at: Mapped[datetime] = mapped_column(default=datetime.utcnow, onupdate=datetime.utcnow)
     accent_color: Mapped[str] = mapped_column(String(7), default='#06b6d4')
     cover_image_path: Mapped[Optional[str]] = mapped_column(String(255))
+    address: Mapped[Optional[str]] = mapped_column(Text)
+    bundesland: Mapped[Optional[str]] = mapped_column(String(10))
 
     organizer: Mapped["User"] = relationship(back_populates="events_organized")
     participants: Mapped[List["EventParticipant"]] = relationship(back_populates="event", cascade="all, delete-orphan")
@@ -147,3 +149,19 @@ class AppSetting(Base):
     value: Mapped[str] = mapped_column(Text, nullable=False)
     is_encrypted: Mapped[bool] = mapped_column(default=False)
     updated_at: Mapped[datetime] = mapped_column(default=datetime.utcnow, onupdate=datetime.utcnow)
+
+class WeatherHistory(Base):
+    __tablename__ = "weather_history"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    lat_grid: Mapped[float] = mapped_column(Float, nullable=False)
+    lon_grid: Mapped[float] = mapped_column(Float, nullable=False)
+    month: Mapped[int] = mapped_column(Integer, nullable=False)
+    day: Mapped[int] = mapped_column(Integer, nullable=False)
+    temp_max_median: Mapped[Optional[float]] = mapped_column(Float)
+    temp_min_median: Mapped[Optional[float]] = mapped_column(Float)
+    precip_median: Mapped[Optional[float]] = mapped_column(Float)
+    sample_years: Mapped[Optional[int]] = mapped_column(Integer)
+    updated_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
+
+    __table_args__ = (UniqueConstraint("lat_grid", "lon_grid", "month", "day", name="uq_weather_grid_day"),)
