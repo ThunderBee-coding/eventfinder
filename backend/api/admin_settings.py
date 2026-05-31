@@ -80,7 +80,10 @@ async def put_settings(
 
     if redis_data:
         r = redis_lib.from_url(os.getenv("REDIS_URL", "redis://redis:6379/0"))
-        r.hset(REDIS_SETTINGS_KEY, mapping=redis_data)
+        try:
+            r.hset(REDIS_SETTINGS_KEY, mapping=redis_data)
+        finally:
+            r.close()
 
     return {"ok": True}
 
@@ -106,7 +109,7 @@ async def test_mail(
 
     msg = EmailMessage()
     msg["From"] = rows["mail_from"]
-    msg["To"] = rows["mail_username"]
+    msg["To"] = rows.get("mail_from") or rows["mail_username"]
     msg["Subject"] = "EventFinder Test-E-Mail"
     msg.set_content("Diese Test-E-Mail bestätigt, dass deine Mail-Konfiguration korrekt ist.")
 
