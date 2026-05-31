@@ -86,8 +86,8 @@ onMounted(load)
         Konfiguration wird verschlüsselt in der Datenbank gespeichert.
       </p>
 
-      <div style="background:var(--bg-surface); border:1px solid var(--border); border-radius:16px; padding:28px; display:flex; flex-direction:column; gap:18px;">
-        <p style="font-size:11px; color:rgba(255,255,255,0.4); text-transform:uppercase; letter-spacing:.08em;">E-Mail / SMTP</p>
+      <div style="background:#0d1117; border:1px solid rgba(255,255,255,0.12); border-radius:16px; padding:28px; display:flex; flex-direction:column; gap:18px;">
+        <p style="font-size:11px; color:rgba(255,255,255,0.55); text-transform:uppercase; letter-spacing:.1em; font-weight:600;">E-Mail / SMTP</p>
 
         <div v-for="field in [
           { key: 'mail_server',   label: 'SMTP-Server',    placeholder: 'smtp.web.de',                         type: 'text'   },
@@ -96,18 +96,18 @@ onMounted(load)
           { key: 'mail_from',     label: 'Absender',       placeholder: 'du@web.de',                            type: 'email'  },
           { key: 'frontend_url',  label: 'Frontend-URL',   placeholder: 'https://eventfinder.thunderbee.uk',    type: 'text'   },
         ]" :key="field.key">
-          <label style="font-size:12px; color:rgba(255,255,255,0.4); display:block; margin-bottom:6px;">{{ field.label }}</label>
+          <label style="font-size:13px; color:rgba(255,255,255,0.65); display:block; margin-bottom:7px; font-weight:500;">{{ field.label }}</label>
           <input v-model="form[field.key]" :type="field.type" :placeholder="field.placeholder"
-            style="width:100%; background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); border-radius:10px; padding:10px 14px; color:#fff; font-size:14px; outline:none; box-sizing:border-box;" />
+            style="width:100%; background:rgba(255,255,255,0.07); border:1px solid rgba(255,255,255,0.18); border-radius:10px; padding:11px 14px; color:#fff; font-size:14px; outline:none; box-sizing:border-box; color-scheme:dark;" />
         </div>
 
         <!-- Passwort -->
         <div>
-          <label style="font-size:12px; color:rgba(255,255,255,0.4); display:block; margin-bottom:6px;">Passwort</label>
+          <label style="font-size:13px; color:rgba(255,255,255,0.65); display:block; margin-bottom:7px; font-weight:500;">Passwort</label>
           <input v-model="form.mail_password" type="password"
             :placeholder="passwordSet ? '●●●●●●●● (unverändert lassen)' : 'Passwort eingeben'"
-            style="width:100%; background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); border-radius:10px; padding:10px 14px; color:#fff; font-size:14px; outline:none; box-sizing:border-box;" />
-          <p style="font-size:11px; color:rgba(255,255,255,0.3); margin-top:5px;">
+            style="width:100%; background:rgba(255,255,255,0.07); border:1px solid rgba(255,255,255,0.18); border-radius:10px; padding:11px 14px; color:#fff; font-size:14px; outline:none; box-sizing:border-box;" />
+          <p style="font-size:12px; color:rgba(255,255,255,0.4); margin-top:6px;">
             Leer lassen um das bestehende Passwort nicht zu ändern
           </p>
         </div>
