@@ -16,10 +16,14 @@ celery_app = Celery(
 
 
 def _get_smtp_settings() -> dict:
-    r = redis_lib.from_url(os.getenv("REDIS_URL", "redis://redis:6379/0"))
-    raw = r.hgetall("app:settings")
-    if raw:
-        return {k.decode(): v.decode() for k, v in raw.items()}
+    try:
+        r = redis_lib.from_url(os.getenv("REDIS_URL", "redis://redis:6379/0"))
+        raw = r.hgetall("app:settings")
+        r.close()
+        if raw:
+            return {k.decode(): v.decode() for k, v in raw.items()}
+    except (redis_lib.ConnectionError, redis_lib.TimeoutError) as e:
+        print(f"Redis connection failed: {e}, using .env fallback")
     # Fallback auf .env
     return {
         "mail_server": os.getenv("MAIL_SERVER", ""),
