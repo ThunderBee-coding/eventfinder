@@ -11,9 +11,11 @@ const props = defineProps<{
 
 const emit = defineEmits<{ dateClick: [date: string] }>()
 
-const today = new Date()
-const currentYear = ref(today.getFullYear())
-const currentMonth = ref(today.getMonth())
+const _firstDate = props.proposedDates.length > 0
+  ? new Date(props.proposedDates[0] + 'T00:00:00')
+  : new Date()
+const currentYear = ref(_firstDate.getFullYear())
+const currentMonth = ref(_firstDate.getMonth())
 
 const monthName = computed(() =>
   new Date(currentYear.value, currentMonth.value).toLocaleString('de-DE', { month: 'long', year: 'numeric' })
@@ -45,6 +47,13 @@ function scoreForDay(day: number): 'best' | 'possible' | 'impossible' | null {
 
 function ownStatusForDay(day: number) {
   return props.availabilities.find(a => a.event_date === isoDate(day) && a.own)?.status
+}
+
+const _today = new Date()
+_today.setHours(0, 0, 0, 0)
+
+function isPast(day: number) {
+  return new Date(isoDate(day) + 'T00:00:00') < _today
 }
 
 function dayBg(day: number) {
@@ -98,19 +107,20 @@ function nextMonth() {
           height: '38px', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center',
           fontSize: '13px', fontWeight: isProposed(day) ? 600 : 400,
           background: dayBg(day), color: dayColor(day),
-          cursor: isProposed(day) ? 'pointer' : 'default',
+          cursor: isProposed(day) && !isPast(day) ? 'pointer' : 'default',
+          opacity: isPast(day) && isProposed(day) ? 0.35 : 1,
           boxShadow: finalDate === isoDate(day) ? `0 0 14px ${accentColor}99` : 'none',
           border: ownStatusForDay(day) ? `1px solid ${accentColor}66` : '1px solid transparent',
           transition: 'all .15s',
         }"
-        @click="isProposed(day) && emit('dateClick', isoDate(day))">
+        @click="isProposed(day) && !isPast(day) && emit('dateClick', isoDate(day))">
         {{ day }}
       </div>
     </div>
     <div style="display:flex; gap:16px; margin-top:16px; flex-wrap:wrap;">
       <span style="display:flex; align-items:center; gap:6px; font-size:12px; color:rgba(255,255,255,0.4);"><span style="width:10px;height:10px;border-radius:50%;background:#10b981;display:inline-block"/>Mehrheit: gut</span>
       <span style="display:flex; align-items:center; gap:6px; font-size:12px; color:rgba(255,255,255,0.4);"><span style="width:10px;height:10px;border-radius:50%;background:#f59e0b;display:inline-block"/>Möglich</span>
-      <span style="display:flex; align-items:center; gap:6px; font-size:12px; color:rgba(255,255,255,0.4);"><span style="width:10px;height:10px;border-radius:50%;background:#f43f5e;display:inline-block"/>Kaum möglich</span>
+      <span style="display:flex; align-items:center; gap:6px; font-size:12px; color:rgba(255,255,255,0.4);"><span style="width:10px;height:10px;border-radius:50%;background:#f43f5e;display:inline-block"/>Nicht möglich</span>
     </div>
   </div>
 </template>
