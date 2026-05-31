@@ -1,6 +1,7 @@
 import os
-from celery import Celery
 import asyncio
+import redis as redis_lib
+from celery import Celery
 from aiosmtplib import send
 from email.message import EmailMessage
 from dotenv import load_dotenv
@@ -10,18 +11,31 @@ load_dotenv()
 celery_app = Celery(
     "tasks",
     broker=os.getenv("REDIS_URL"),
-    backend=os.getenv("REDIS_URL")
+    backend=os.getenv("REDIS_URL"),
 )
 
-MAIL_SERVER = os.getenv("MAIL_SERVER")
-MAIL_PORT = int(os.getenv("MAIL_PORT", 587))
-MAIL_USERNAME = os.getenv("MAIL_USERNAME")
-MAIL_PASSWORD = os.getenv("MAIL_PASSWORD")
-MAIL_FROM = os.getenv("MAIL_FROM")
 
-async def _send_email(subject: str, recipient: str, body: str):
+def _get_smtp_settings() -> dict:
+    r = redis_lib.from_url(os.getenv("REDIS_URL", "redis://redis:6379/0"))
+    raw = r.hgetall("app:settings")
+    if raw:
+        return {k.decode(): v.decode() for k, v in raw.items()}
+    # Fallback auf .env
+    return {
+        "mail_server": os.getenv("MAIL_SERVER", ""),
+        "mail_port": os.getenv("MAIL_PORT", "587"),
+        "mail_username": os.getenv("MAIL_USERNAME", ""),
+        "mail_password": os.getenv("MAIL_PASSWORD", ""),
+        "mail_from": os.getenv("MAIL_FROM", ""),
+        "frontend_url": os.getenv("FRONTEND_URL", "http://localhost:5173"),
+    }
+
+
+async def _send_email(
+    subject: str, recipient: str, body: str, settings: dict
+) -> bool:
     message = EmailMessage()
-    message["From"] = MAIL_FROM
+    message["From"] = settings.get("mail_from") or settings.get("mail_username", "")
     message["To"] = recipient
     message["Subject"] = subject
     message.set_content(body)
@@ -29,24 +43,27 @@ async def _send_email(subject: str, recipient: str, body: str):
     try:
         await send(
             message,
-            hostname=MAIL_SERVER,
-            port=MAIL_PORT,
-            username=MAIL_USERNAME,
-            password=MAIL_PASSWORD,
-            start_tls=True if MAIL_PORT == 587 else False
+            hostname=settings["mail_server"],
+            port=int(settings.get("mail_port", 587)),
+            username=settings["mail_username"],
+            password=settings["mail_password"],
+            start_tls=int(settings.get("mail_port", 587)) == 587,
         )
         return True
     except Exception as e:
         print(f"Error sending email: {e}")
         return False
 
+
 @celery_app.task
 def send_magic_link_email(email: str, token: str):
-    frontend_url = os.getenv("FRONTEND_URL", "http://localhost:5173")
+    settings = _get_smtp_settings()
+    frontend_url = settings.get("frontend_url", "http://localhost:5173")
     magic_link = f"{frontend_url}/login?token={token}"
     subject = "Dein Magic Link für EventFinder"
-    body = f"Klicke auf den folgenden Link, um dich anzumelden: {magic_link}\nDer Link ist 1 Stunde gültig."
-    
-    # Run async function in sync task
-    loop = asyncio.get_event_loop()
-    return loop.run_until_complete(_send_email(subject, email, body))
+    body = (
+        f"Klicke auf den folgenden Link, um dich anzumelden:\n"
+        f"{magic_link}\n\n"
+        f"Der Link ist 1 Stunde gültig."
+    )
+    return asyncio.run(_send_email(subject, email, body, settings))
