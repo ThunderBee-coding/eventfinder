@@ -5,7 +5,7 @@ import { useAuth } from '../composables/useAuth'
 
 const { headers } = useAuth()
 
-const form = ref({
+const form = ref<Record<string, string>>({
   mail_server: '',
   mail_port: '587',
   mail_username: '',
@@ -97,7 +97,7 @@ onMounted(load)
           { key: 'frontend_url',  label: 'Frontend-URL',   placeholder: 'https://eventfinder.thunderbee.uk',    type: 'text'   },
         ]" :key="field.key">
           <label style="font-size:12px; color:rgba(255,255,255,0.4); display:block; margin-bottom:6px;">{{ field.label }}</label>
-          <input v-model="(form as any)[field.key]" :type="field.type" :placeholder="field.placeholder"
+          <input v-model="form[field.key]" :type="field.type" :placeholder="field.placeholder"
             style="width:100%; background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); border-radius:10px; padding:10px 14px; color:#fff; font-size:14px; outline:none; box-sizing:border-box;" />
         </div>
 
