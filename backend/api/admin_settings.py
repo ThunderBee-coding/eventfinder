@@ -117,7 +117,7 @@ async def test_mail(
             port=int(rows["mail_port"]),
             username=rows["mail_username"],
             password=rows["mail_password"],
-            start_tls=int(rows.get("mail_port", "587")) == 587,
+            start_tls=int(rows["mail_port"]) == 587,
         )
         return {"success": True}
     except Exception as e:
