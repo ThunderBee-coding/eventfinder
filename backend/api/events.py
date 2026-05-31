@@ -106,10 +106,44 @@ async def patch_event(
     event = await _get_event_as_participant(event_id, current_user, db)
     if event.organizer_id != current_user.id:
         raise HTTPException(status_code=403, detail="Only the organizer can edit this event")
-    for field, value in patch.model_dump(exclude_none=True).items():
+
+    patch_data = patch.model_dump(exclude_none=True)
+
+    # Geocoding: wenn address gesetzt, lat/lon/bundesland automatisch ermitteln
+    if "address" in patch_data:
+        import httpx as _httpx
+        try:
+            async with _httpx.AsyncClient() as client:
+                resp = await client.get(
+                    "https://nominatim.openstreetmap.org/search",
+                    params={"q": patch_data["address"], "format": "json", "addressdetails": 1, "limit": 1},
+                    headers={"User-Agent": "EventFinder/2.0 (thunderbee732@gmail.com)"},
+                    timeout=8.0,
+                )
+                geo = resp.json()
+            if geo:
+                patch_data["latitude"] = float(geo[0]["lat"])
+                patch_data["longitude"] = float(geo[0]["lon"])
+                addr = geo[0].get("address", {})
+                iso = addr.get("ISO3166-2-lvl4", "")
+                patch_data["bundesland"] = iso[3:] if iso.startswith("DE-") else ""
+        except Exception as e:
+            print(f"Geocoding failed: {e}")
+
+    for field, value in patch_data.items():
         setattr(event, field, value)
+
     await db.commit()
     await db.refresh(event)
+
+    # Wetter-Historie abrufen wenn Koordinaten jetzt gesetzt
+    if event.latitude and event.longitude:
+        try:
+            from tasks import fetch_weather_history
+            fetch_weather_history.delay(str(event_id), event.latitude, event.longitude)
+        except Exception as e:
+            print(f"Weather task dispatch failed: {e}")  # nicht kritisch
+
     return event
 
 
