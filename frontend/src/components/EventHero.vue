@@ -38,10 +38,16 @@ const emit = defineEmits<{
       <div style="display:flex; align-items:flex-end; justify-content:space-between; gap:16px;">
         <div style="flex:1; min-width:0;">
           <!-- Ort: Anzeige + Edit-Button (Edit-State liegt in EventDetails) -->
-          <div style="display:flex; align-items:center; gap:6px; margin-bottom:6px; min-height:22px;">
+          <div style="display:flex; align-items:center; gap:6px; margin-bottom:6px; min-height:22px; flex-wrap:wrap;">
             <p v-if="address || locationName" style="font-size:13px; color:rgba(255,255,255,0.45); margin:0;">
               📍 {{ address || locationName }}
             </p>
+            <a v-if="address || locationName"
+              :href="`https://maps.google.com/?q=${encodeURIComponent(address || locationName || '')}`"
+              target="_blank" rel="noopener"
+              style="font-size:11px; color:rgba(6,182,212,0.8); text-decoration:none; border:1px solid rgba(6,182,212,0.3); border-radius:5px; padding:2px 7px; line-height:1.4; white-space:nowrap;">
+              🗺 Google Maps
+            </a>
             <button
               v-if="isOrganizer"
               @click="emit('editLocation')"
