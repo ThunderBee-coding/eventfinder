@@ -1,5 +1,6 @@
 import os
 import asyncio
+import uuid
 import redis as redis_lib
 from celery import Celery
 from aiosmtplib import send
@@ -60,16 +61,18 @@ async def _send_email(
 
 
 @celery_app.task
-def send_invitation_email(recipient_email: str, inviter_name: str, event_title: str, token: str, event_id: str = ""):
+def send_invitation_email(recipient_email: str, inviter_name: str, event_title: str, token: str, event_id: str = "", message: str = ""):
     settings = _get_smtp_settings()
     base_url = settings.get("frontend_url", "http://localhost:5173").rstrip("/")
     magic_link = f"{base_url}/login?token={token}"
     if event_id:
         magic_link += f"&event={event_id}"
     subject = f"Einladung zum Event: {event_title}"
+    personal = f"\nPersönliche Nachricht von {inviter_name}:\n{message}\n" if message and message.strip() else ""
     body = (
         f"Hallo,\n\n"
-        f"{inviter_name} hat dich zum Event \"{event_title}\" eingeladen.\n\n"
+        f"{inviter_name} hat dich zum Event \"{event_title}\" eingeladen.\n"
+        f"{personal}\n"
         f"Klicke auf den folgenden Link, um die Einladung anzunehmen:\n"
         f"{magic_link}\n\n"
         f"Du wirst direkt zum Event weitergeleitet, wo du deine Verfügbarkeit eintragen kannst.\n"
@@ -77,6 +80,106 @@ def send_invitation_email(recipient_email: str, inviter_name: str, event_title: 
         f"Falls du diese Einladung nicht erwartet hast, kannst du diese E-Mail ignorieren."
     )
     return asyncio.run(_send_email(subject, recipient_email, body, settings))
+
+
+@celery_app.task
+def send_organizer_summary(event_id: str, action_text: str):
+    asyncio.run(_send_organizer_summary_async(event_id, action_text))
+
+
+async def _send_organizer_summary_async(event_id: str, action_text: str):
+    import sys
+    app_dir = os.path.dirname(os.path.abspath(__file__))
+    if app_dir not in sys.path:
+        sys.path.insert(0, app_dir)
+    import models
+    from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
+    from sqlalchemy.orm import sessionmaker
+    from sqlalchemy import select
+
+    engine = create_async_engine(os.getenv("DATABASE_URL"), echo=False)
+    async_session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+
+    try:
+        async with async_session() as session:
+            event_result = await session.execute(
+                select(models.Event).where(models.Event.id == uuid.UUID(event_id))
+            )
+            event = event_result.scalar_one_or_none()
+            if not event:
+                return
+
+            organizer_result = await session.execute(
+                select(models.User).where(models.User.id == event.organizer_id)
+            )
+            organizer = organizer_result.scalar_one_or_none()
+            if not organizer:
+                return
+
+            proposals_result = await session.execute(
+                select(models.DateProposal)
+                .where(models.DateProposal.event_id == event.id)
+                .order_by(models.DateProposal.proposed_date)
+            )
+            proposals = proposals_result.scalars().all()
+
+            parts_result = await session.execute(
+                select(models.User, models.EventParticipant)
+                .join(models.EventParticipant, models.User.id == models.EventParticipant.user_id)
+                .where(models.EventParticipant.event_id == event.id)
+            )
+            participants = parts_result.all()
+
+            avail_result = await session.execute(
+                select(models.Availability)
+                .join(models.EventParticipant, models.EventParticipant.id == models.Availability.participant_id)
+                .where(models.EventParticipant.event_id == event.id)
+            )
+            availabilities = avail_result.scalars().all()
+
+        # Terminübersicht aufbauen
+        WEEKDAYS = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So']
+        MONTHS = ['', 'Jan', 'Feb', 'Mär', 'Apr', 'Mai', 'Jun', 'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Dez']
+        prop_lines = []
+        for p in proposals:
+            d = p.proposed_date
+            date_str = f"{WEEKDAYS[d.weekday()]}, {d.day:02d}. {MONTHS[d.month]} {d.year}"
+            day_avails = [a for a in availabilities if a.event_date == d]
+            best = sum(1 for a in day_avails if a.status == 'best')
+            possible = sum(1 for a in day_avails if a.status == 'possible')
+            impossible = sum(1 for a in day_avails if a.status == 'impossible')
+            voted_ids = {a.participant_id for a in day_avails}
+            pending = sum(1 for _, ep in participants if ep.id not in voted_ids)
+            prop_lines.append(f"  {date_str:<22}  ✓✓ {best}  ~ {possible}  ✗ {impossible}  ? {pending}")
+
+        # Teilnehmerliste aufbauen
+        part_lines = []
+        for user, ep in participants:
+            count = sum(1 for a in availabilities if a.participant_id == ep.id)
+            is_org = user.id == event.organizer_id
+            tag = ' (Organisator)' if is_org else ''
+            mark = '★' if is_org else '○'
+            part_lines.append(f"  {mark} {user.name}{tag} — {count}/{len(proposals)} bewertet")
+
+        sep = '─' * 52
+        body = (
+            f"Hallo {organizer.name},\n\n"
+            f"Aktion: {action_text}\n\n"
+            f"{sep}\n"
+            f"TERMINÜBERSICHT  ({len(proposals)} Vorschläge)\n"
+            f"{sep}\n"
+            + ("\n".join(prop_lines) if prop_lines else "  Keine Terminvorschläge") +
+            f"\n\n{sep}\n"
+            f"TEILNEHMER ({len(participants)})\n"
+            f"{sep}\n"
+            + ("\n".join(part_lines) if part_lines else "  Keine Teilnehmer") +
+            f"\n\n── EventFinder"
+        )
+
+        settings = _get_smtp_settings()
+        await _send_email(f"{event.title} – Aktueller Stand", organizer.email, body, settings)
+    finally:
+        await engine.dispose()
 
 
 @celery_app.task
