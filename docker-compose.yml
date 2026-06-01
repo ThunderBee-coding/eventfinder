@@ -21,6 +21,8 @@ services:
       context: ./backend
       dockerfile: ../Dockerfile.backend
     container_name: eventfinder-backend
+    ports:
+      - "127.0.0.1:8000:8000"
     depends_on:
       - db
       - redis
@@ -58,10 +60,7 @@ services:
       dockerfile: ../Dockerfile.frontend
     container_name: eventfinder-frontend
     ports:
-      - "127.0.0.1:5173:5173"
-    volumes:
-      - ./frontend:/app
-      - /app/node_modules
+      - "127.0.0.1:5173:80"
     depends_on:
       - backend
 
