@@ -84,6 +84,11 @@ class InviteRequest(BaseModel):
     email: EmailStr
     message: Optional[str] = None
 
+class SendCalendarInvitesRequest(BaseModel):
+    start_time: str  # "HH:MM"
+    end_time: str    # "HH:MM"
+    description: Optional[str] = None
+
 class OrganizerTransfer(BaseModel):
     user_id: uuid.UUID
 

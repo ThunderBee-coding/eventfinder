@@ -29,6 +29,31 @@ const availStatus = ref<'best'|'possible'|'impossible'>('possible')
 const availComment = ref('')
 const showCoverUpload = ref(false)
 
+// --- Kalender-Einladung ---
+const showCalendarModal = ref(false)
+const calStartTime = ref('14:00')
+const calEndTime = ref('16:00')
+const calDescription = ref('')
+const calSending = ref(false)
+const calSent = ref(false)
+
+async function sendCalendarInvites() {
+  calSending.value = true
+  try {
+    await axios.post(`/events/${eventId}/send-invites`, {
+      start_time: calStartTime.value,
+      end_time: calEndTime.value,
+      description: calDescription.value || null,
+    }, { headers: headers() })
+    calSent.value = true
+    setTimeout(() => { showCalendarModal.value = false; calSent.value = false }, 2000)
+  } catch (e: any) {
+    console.error('Calendar invites failed', e)
+  } finally {
+    calSending.value = false
+  }
+}
+
 // --- Orts-Editor (Leaflet + Nominatim) ---
 const locationSearch = ref('')
 const locationResults = ref<Array<{ display_name: string; lat: number; lon: number; bundesland: string }>>([])
@@ -548,6 +573,20 @@ onMounted(async () => {
               @transfer-organizer="transferOrganizer"
             />
           </div>
+
+          <!-- Kalender-Einladung (nur Organisator + finales Datum gesetzt) -->
+          <div v-if="isOrganizer && event.final_date"
+            style="background:var(--bg-surface); border:1px solid var(--border); border-radius:16px; padding:20px;">
+            <p style="font-size:11px; color:rgba(255,255,255,0.35); text-transform:uppercase; letter-spacing:.08em; margin-bottom:12px;">📅 Termin bestätigt</p>
+            <p style="font-size:14px; font-weight:600; margin-bottom:4px;">
+              {{ new Date(event.final_date + 'T00:00:00').toLocaleDateString('de-DE', { weekday:'long', day:'numeric', month:'long', year:'numeric' }) }}
+            </p>
+            <p style="font-size:13px; color:rgba(255,255,255,0.4); margin-bottom:16px;">Sende eine Kalender-Einladung (ICS) an alle Teilnehmer.</p>
+            <button @click="showCalendarModal = true"
+              :style="{ width:'100%', padding:'10px', borderRadius:'12px', border:'none', cursor:'pointer', fontWeight:600, fontSize:'13px', color:'#000', background: event.accent_color, boxShadow: `0 0 20px ${event.accent_color}44` }">
+              📅 Kalender-Einladung versenden
+            </button>
+          </div>
         </div>
 
         <!-- Rechts: Kalender -->
@@ -701,5 +740,49 @@ onMounted(async () => {
 
     <InviteModal v-if="showInvite" :event-id="eventId" :accent-color="event?.accent_color ?? '#06b6d4'"
       @close="showInvite = false" @invited="load()" />
+
+    <!-- Kalender-Einladung Modal -->
+    <div v-if="showCalendarModal"
+      style="position:fixed; inset:0; background:rgba(0,0,0,0.7); display:flex; align-items:center; justify-content:center; padding:16px; z-index:100; backdrop-filter:blur(4px);"
+      @click.self="showCalendarModal = false">
+      <div style="background:#0d1117; border:1px solid rgba(255,255,255,0.1); border-radius:20px; padding:32px; width:100%; max-width:420px;">
+        <h2 style="font-size:18px; font-weight:700; margin-bottom:6px;">📅 Kalender-Einladung</h2>
+        <p style="color:rgba(255,255,255,0.4); font-size:13px; margin-bottom:24px;">
+          Wird an alle {{ participants.length }} Teilnehmer gesendet.
+        </p>
+
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:16px;">
+          <div>
+            <label style="font-size:11px; color:rgba(255,255,255,0.4); display:block; margin-bottom:6px;">Beginn</label>
+            <input type="time" v-model="calStartTime"
+              style="width:100%; background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.12); border-radius:10px; padding:10px 12px; color:#fff; font-size:14px; outline:none; color-scheme:dark; box-sizing:border-box;" />
+          </div>
+          <div>
+            <label style="font-size:11px; color:rgba(255,255,255,0.4); display:block; margin-bottom:6px;">Ende</label>
+            <input type="time" v-model="calEndTime"
+              style="width:100%; background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.12); border-radius:10px; padding:10px 12px; color:#fff; font-size:14px; outline:none; color-scheme:dark; box-sizing:border-box;" />
+          </div>
+        </div>
+
+        <label style="font-size:11px; color:rgba(255,255,255,0.4); display:block; margin-bottom:6px;">
+          Beschreibung im Kalendereintrag <span style="color:rgba(255,255,255,0.2);">(optional)</span>
+        </label>
+        <textarea v-model="calDescription" rows="4"
+          :placeholder="`z.B. Bringt eure Lieblings-Spiele mit! Treffpunkt: Eingang Marienplatz.`"
+          style="width:100%; background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.12); border-radius:10px; padding:10px 14px; color:#fff; font-size:14px; outline:none; margin-bottom:20px; box-sizing:border-box; resize:vertical; font-family:inherit;"></textarea>
+
+        <div v-if="calSent" style="text-align:center; color:#10b981; font-size:15px; padding:8px 0;">
+          ✓ Einladungen werden versendet!
+        </div>
+        <div v-else style="display:flex; justify-content:flex-end; gap:10px;">
+          <button @click="showCalendarModal = false"
+            style="padding:10px 20px; border-radius:10px; background:transparent; border:1px solid rgba(255,255,255,0.12); color:rgba(255,255,255,0.6); cursor:pointer; font-size:14px;">Abbrechen</button>
+          <button @click="sendCalendarInvites" :disabled="calSending"
+            :style="{ padding:'10px 24px', borderRadius:'10px', border:'none', cursor: calSending ? 'default' : 'pointer', fontWeight:600, fontSize:'14px', color:'#000', background: event?.accent_color ?? '#06b6d4', opacity: calSending ? 0.7 : 1 }">
+            {{ calSending ? 'Sende…' : `📅 An ${participants.length} Teilnehmer senden` }}
+          </button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>

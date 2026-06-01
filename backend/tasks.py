@@ -202,6 +202,114 @@ async def _send_organizer_summary_async(event_id: str, action_text: str):
 
 
 @celery_app.task
+def send_calendar_invites(event_id: str, start_time: str, end_time: str, description: str):
+    asyncio.run(_send_calendar_invites_async(event_id, start_time, end_time, description))
+
+
+async def _send_calendar_invites_async(event_id: str, start_time: str, end_time: str, description: str):
+    import sys
+    from email.mime.multipart import MIMEMultipart
+    from email.mime.text import MIMEText
+    from email.mime.base import MIMEBase
+    from email import encoders
+    app_dir = os.path.dirname(os.path.abspath(__file__))
+    if app_dir not in sys.path:
+        sys.path.insert(0, app_dir)
+    import models
+    from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
+    from sqlalchemy.orm import sessionmaker
+    from sqlalchemy import select
+
+    engine = create_async_engine(os.getenv("DATABASE_URL"), echo=False)
+    async_session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+
+    try:
+        async with async_session() as session:
+            event_result = await session.execute(
+                select(models.Event).where(models.Event.id == uuid.UUID(event_id))
+            )
+            event = event_result.scalar_one_or_none()
+            if not event or not event.final_date:
+                return
+
+            parts_result = await session.execute(
+                select(models.User)
+                .join(models.EventParticipant, models.User.id == models.EventParticipant.user_id)
+                .where(models.EventParticipant.event_id == event.id)
+            )
+            participants = parts_result.scalars().all()
+
+        # ICS aufbauen
+        def _fmt(hhmm: str) -> str:
+            h, m = hhmm.split(':')
+            return h.zfill(2) + m.zfill(2) + '00'
+
+        d = event.final_date
+        date_str = f"{d.year}{str(d.month).zfill(2)}{str(d.day).zfill(2)}"
+        dtstart = f"{date_str}T{_fmt(start_time)}"
+        dtend   = f"{date_str}T{_fmt(end_time)}"
+        location = event.address or event.location_name or ""
+        desc = (description or "").replace('\n', '\\n')
+        summary = event.title
+
+        ics_content = (
+            "BEGIN:VCALENDAR\r\n"
+            "VERSION:2.0\r\n"
+            "PRODID:-//EventFinder//EventFinder//DE\r\n"
+            "METHOD:REQUEST\r\n"
+            "BEGIN:VEVENT\r\n"
+            f"DTSTART:{dtstart}\r\n"
+            f"DTEND:{dtend}\r\n"
+            f"SUMMARY:{summary}\r\n"
+            f"DESCRIPTION:{desc}\r\n"
+            f"LOCATION:{location}\r\n"
+            f"UID:{event_id}@eventfinder\r\n"
+            "END:VEVENT\r\n"
+            "END:VCALENDAR\r\n"
+        )
+
+        settings = _get_smtp_settings()
+        import aiosmtplib
+
+        for participant in participants:
+            msg = MIMEMultipart('mixed')
+            msg['From'] = settings.get("mail_from") or settings.get("mail_username", "")
+            msg['To'] = participant.email
+            msg['Subject'] = f"Termin: {summary}"
+
+            body_text = (
+                f"Hallo {participant.name},\n\n"
+                f"der Termin für \"{summary}\" wurde festgelegt:\n\n"
+                f"📅 {d.day:02d}.{d.month:02d}.{d.year}  {start_time} – {end_time} Uhr\n"
+                + (f"📍 {location}\n" if location else "") +
+                (f"\n{description}\n" if description and description.strip() else "") +
+                f"\nDer angehängte Kalendereintrag kann direkt in deinen Kalender importiert werden.\n\n"
+                f"── EventFinder"
+            )
+            msg.attach(MIMEText(body_text, 'plain', 'utf-8'))
+
+            ics_part = MIMEBase('text', 'calendar', method='REQUEST', name='termin.ics')
+            ics_part.set_payload(ics_content.encode('utf-8'))
+            encoders.encode_base64(ics_part)
+            ics_part.add_header('Content-Disposition', 'attachment', filename='termin.ics')
+            msg.attach(ics_part)
+
+            try:
+                await aiosmtplib.send(
+                    msg,
+                    hostname=settings["mail_server"],
+                    port=int(settings.get("mail_port", 587)),
+                    username=settings["mail_username"],
+                    password=settings["mail_password"],
+                    start_tls=int(settings.get("mail_port", 587)) == 587,
+                )
+            except Exception as e:
+                print(f"Calendar invite failed for {participant.email}: {e}")
+    finally:
+        await engine.dispose()
+
+
+@celery_app.task
 def send_magic_link_email(email: str, token: str):
     settings = _get_smtp_settings()
     base_url = settings.get("frontend_url", "http://localhost:5173").rstrip("/")
