@@ -108,7 +108,7 @@ async def patch_event(
     if event.organizer_id != current_user.id:
         raise HTTPException(status_code=403, detail="Only the organizer can edit this event")
 
-    patch_data = patch.model_dump(exclude_none=True)
+    patch_data = patch.model_dump(exclude_unset=True)
 
     # Geocoding: wenn address gesetzt, lat/lon/bundesland automatisch ermitteln
     if "address" in patch_data:
