@@ -81,26 +81,32 @@ const dmWeekdays = ref<number[]>([1, 2, 3, 4, 5]) // Mo–Fr default
 const dmDates = ref<string[]>([])
 const dmManualDate = ref('')
 const dmSaving = ref(false)
+const dmVotedDates = ref<string[]>([])  // Termine mit Abstimmungen die gelöscht würden
 const WEEKDAY_LABELS = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa']
 
 function dmGenerate() {
   if (!dmFrom.value || !dmTo.value) return
   const result: string[] = []
-  const cur = new Date(dmFrom.value)
-  const end = new Date(dmTo.value)
+  // 'T00:00:00' erzwingt lokale Zeitzone statt UTC-Mitternacht
+  const cur = new Date(dmFrom.value + 'T00:00:00')
+  const end = new Date(dmTo.value + 'T00:00:00')
   while (cur <= end) {
     if (dmWeekdays.value.includes(cur.getDay())) {
-      result.push(cur.toISOString().slice(0, 10))
+      const y = cur.getFullYear()
+      const m = String(cur.getMonth() + 1).padStart(2, '0')
+      const d = String(cur.getDate()).padStart(2, '0')
+      result.push(`${y}-${m}-${d}`)
     }
     cur.setDate(cur.getDate() + 1)
   }
-  // Merge mit bereits manuell ausgewählten (kein Duplikat)
   const merged = [...new Set([...dmDates.value, ...result])].sort()
   dmDates.value = merged
+  dmVotedDates.value = []
 }
 
 function dmRemoveDate(d: string) {
   dmDates.value = dmDates.value.filter(x => x !== d)
+  dmVotedDates.value = dmVotedDates.value.filter(x => x !== d)
 }
 
 function dmAddManual() {
@@ -118,6 +124,17 @@ function dmToggleDay(day: number) {
 }
 
 async function dmSave() {
+  // Prüfen ob bereits bewertete Termine entfernt werden
+  const newSet = new Set(dmDates.value)
+  const voted = proposals.value
+    .map((p: any) => p.proposed_date)
+    .filter((d: string) => !newSet.has(d) && availabilities.value.some((a: any) => a.event_date === d))
+
+  if (voted.length > 0 && dmVotedDates.value.length === 0) {
+    dmVotedDates.value = voted
+    return  // Warnung anzeigen, User muss nochmal klicken
+  }
+  dmVotedDates.value = []
   dmSaving.value = true
   try {
     await axios.post(`/events/${eventId}/proposals`, { dates: dmDates.value }, { headers: headers() })
@@ -130,11 +147,12 @@ async function dmSave() {
 
 function dmOpen() {
   dmDates.value = proposals.value.map((p: any) => p.proposed_date)
+  dmVotedDates.value = []
   showDateManager.value = true
 }
 
 function formatDateShort(iso: string) {
-  return new Date(iso).toLocaleDateString('de-DE', { weekday: 'short', day: 'numeric', month: 'short' })
+  return new Date(iso + 'T00:00:00').toLocaleDateString('de-DE', { weekday: 'short', day: 'numeric', month: 'short' })
 }
 
 // --- Laden ---
@@ -459,17 +477,25 @@ onMounted(async () => {
 
           <p style="font-size:11px;color:rgba(249,115,22,0.6);margin:0 0 12px;">🎉 Feiertage werden markiert, aber nicht ausgeschlossen</p>
 
+          <!-- Warnung: bewertete Termine werden gelöscht -->
+          <div v-if="dmVotedDates.length > 0"
+            style="background:rgba(244,63,94,0.1);border:1px solid rgba(244,63,94,0.35);border-radius:10px;padding:10px 12px;margin-bottom:12px;">
+            <p style="font-size:12px;color:#f43f5e;margin:0 0 6px;font-weight:600;">⚠ Diese Termine haben bereits Abstimmungen und werden gelöscht:</p>
+            <p style="font-size:11px;color:rgba(244,63,94,0.8);margin:0 0 8px;">{{ dmVotedDates.map(d => formatDateShort(d)).join(' · ') }}</p>
+            <p style="font-size:11px;color:rgba(255,255,255,0.4);margin:0;">Nochmals auf "Speichern" klicken um trotzdem fortzufahren.</p>
+          </div>
+
           <div style="display:flex;justify-content:flex-end;gap:8px;">
-            <button @click="dmDates = []"
+            <button @click="dmDates = []; dmVotedDates = []"
               style="padding:7px 14px;border-radius:10px;background:transparent;border:1px solid rgba(255,255,255,0.12);color:rgba(255,255,255,0.5);cursor:pointer;font-size:12px;">
               Leeren
             </button>
             <button @click="dmSave" :disabled="dmSaving || dmDates.length === 0"
               :style="{ padding:'7px 16px', borderRadius:'10px', border:'none', fontWeight:600, fontSize:'12px', color:'#000',
-                background: event.accent_color,
+                background: dmVotedDates.length > 0 ? '#f43f5e' : event.accent_color,
                 cursor: dmDates.length > 0 ? 'pointer' : 'not-allowed',
                 opacity: dmDates.length === 0 ? 0.5 : 1 }">
-              {{ dmSaving ? 'Speichern…' : `${dmDates.length} Termine speichern` }}
+              {{ dmSaving ? 'Speichern…' : dmVotedDates.length > 0 ? '⚠ Trotzdem speichern' : `${dmDates.length} Termine speichern` }}
             </button>
           </div>
         </div>
@@ -651,13 +677,23 @@ onMounted(async () => {
           </button>
         </div>
 
+        <!-- Warnung: bewertete Termine werden gelöscht -->
+        <div v-if="dmVotedDates.length > 0"
+          style="background:rgba(244,63,94,0.1);border:1px solid rgba(244,63,94,0.35);border-radius:10px;padding:12px 14px;margin-bottom:16px;">
+          <p style="font-size:13px;color:#f43f5e;margin:0 0 6px;font-weight:600;">⚠ Diese Termine haben bereits Abstimmungen:</p>
+          <p style="font-size:12px;color:rgba(244,63,94,0.8);margin:0 0 8px;">{{ dmVotedDates.map(d => formatDateShort(d)).join(' · ') }}</p>
+          <p style="font-size:12px;color:rgba(255,255,255,0.4);margin:0;">Nochmals auf "Speichern" klicken um trotzdem fortzufahren.</p>
+        </div>
+
         <!-- Aktionen -->
         <div style="display:flex; justify-content:flex-end; gap:10px;">
-          <button @click="showDateManager = false"
+          <button @click="showDateManager = false; dmVotedDates = []"
             style="padding:10px 20px; border-radius:10px; background:transparent; border:1px solid rgba(255,255,255,0.12); color:rgba(255,255,255,0.6); cursor:pointer; font-size:14px;">Abbrechen</button>
           <button @click="dmSave" :disabled="dmSaving || dmDates.length === 0"
-            :style="{ padding:'10px 24px', borderRadius:'10px', border:'none', cursor:'pointer', fontWeight:600, fontSize:'14px', color:'#000', background: event.accent_color, opacity: (dmSaving || dmDates.length === 0) ? 0.6 : 1 }">
-            {{ dmSaving ? 'Speichern...' : `${dmDates.length} Termine speichern` }}
+            :style="{ padding:'10px 24px', borderRadius:'10px', border:'none', cursor:'pointer', fontWeight:600, fontSize:'14px', color:'#000',
+              background: dmVotedDates.length > 0 ? '#f43f5e' : event.accent_color,
+              opacity: (dmSaving || dmDates.length === 0) ? 0.6 : 1 }">
+            {{ dmSaving ? 'Speichern...' : dmVotedDates.length > 0 ? '⚠ Trotzdem speichern' : `${dmDates.length} Termine speichern` }}
           </button>
         </div>
       </div>

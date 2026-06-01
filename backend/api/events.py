@@ -12,7 +12,7 @@ import models
 import schemas
 import auth
 from fastapi.security import OAuth2PasswordBearer
-from tasks import send_organizer_summary
+from tasks import schedule_organizer_summary
 
 router = APIRouter()
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/verify")
@@ -340,7 +340,7 @@ async def invite_participant(
         event_id=str(event_id),
         message=body.message or "",
     )
-    send_organizer_summary.delay(
+    schedule_organizer_summary(
         str(event_id),
         f"{current_user.name} hat {email} zum Event eingeladen."
     )
@@ -382,7 +382,7 @@ async def set_proposals(
     ]
     db.add_all(new_proposals)
     await db.commit()
-    send_organizer_summary.delay(
+    schedule_organizer_summary(
         str(event_id),
         f"{current_user.name} hat die Terminvorschläge aktualisiert ({len(body.dates)} Termine)."
     )

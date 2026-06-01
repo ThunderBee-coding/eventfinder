@@ -9,7 +9,7 @@ from database import get_db
 import models
 import schemas
 from .events import get_current_user
-from tasks import send_organizer_summary
+from tasks import schedule_organizer_summary
 
 router = APIRouter()
 
@@ -61,7 +61,7 @@ async def set_availability(
     if event:
         status_labels = {'best': 'Sehr gut', 'possible': 'Möglich', 'impossible': 'Nicht möglich'}
         label = status_labels.get(str(availability_in.status.value), str(availability_in.status))
-        send_organizer_summary.delay(
+        schedule_organizer_summary(
             str(event.id),
             f"{current_user.name} hat für {availability_in.event_date} abgestimmt: {label}."
         )

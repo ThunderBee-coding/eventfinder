@@ -82,8 +82,27 @@ def send_invitation_email(recipient_email: str, inviter_name: str, event_title: 
     return asyncio.run(_send_email(subject, recipient_email, body, settings))
 
 
+def schedule_organizer_summary(event_id: str, action_text: str):
+    """Debounced: sendet frühestens 30 Min nach der letzten Aktion."""
+    import time
+    r = redis_lib.from_url(os.getenv("REDIS_URL", "redis://redis:6379/0"))
+    version = int(time.time() * 1000)
+    r.set(f"summary_v:{event_id}", version, ex=7200)
+    r.set(f"summary_txt:{event_id}", action_text, ex=7200)
+    r.close()
+    send_organizer_summary.apply_async(args=[event_id, version], countdown=1800)
+
+
 @celery_app.task
-def send_organizer_summary(event_id: str, action_text: str):
+def send_organizer_summary(event_id: str, version: int):
+    import time
+    r = redis_lib.from_url(os.getenv("REDIS_URL", "redis://redis:6379/0"))
+    stored = r.get(f"summary_v:{event_id}")
+    action_text_raw = r.get(f"summary_txt:{event_id}")
+    r.close()
+    if not stored or int(stored) != version:
+        return  # Neuere Aktion hat diesen Task überholt
+    action_text = action_text_raw.decode() if action_text_raw else "Neue Aktivität"
     asyncio.run(_send_organizer_summary_async(event_id, action_text))
 
 
