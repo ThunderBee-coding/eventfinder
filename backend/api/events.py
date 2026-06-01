@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
+from sqlalchemy import select, func, delete as sql_delete
 from typing import List
 from datetime import datetime, timedelta
 import uuid
@@ -12,6 +12,7 @@ import models
 import schemas
 import auth
 from fastapi.security import OAuth2PasswordBearer
+from tasks import schedule_organizer_summary
 
 router = APIRouter()
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/verify")
@@ -293,7 +294,7 @@ async def transfer_organizer(
 @router.post("/{event_id}/invite", status_code=200)
 async def invite_participant(
     event_id: uuid.UUID,
-    email: str,
+    body: schemas.InviteRequest,
     current_user: models.User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -303,6 +304,7 @@ async def invite_participant(
     if event.organizer_id != current_user.id:
         raise HTTPException(status_code=403, detail="Only the organizer can invite participants")
 
+    email = body.email
     result = await db.execute(select(models.User).where(models.User.email == email))
     user = result.scalar_one_or_none()
     if not user:
@@ -321,7 +323,6 @@ async def invite_participant(
     if not already_participant.scalar_one_or_none():
         db.add(models.EventParticipant(event_id=event_id, user_id=user.id))
 
-    # Magic Link für Einladungs-E-Mail (24h gültig)
     token = secrets.token_urlsafe(32)
     db.add(models.MagicLink(
         user_id=user.id,
@@ -337,6 +338,11 @@ async def invite_participant(
         event_title=event.title,
         token=token,
         event_id=str(event_id),
+        message=body.message or "",
+    )
+    schedule_organizer_summary(
+        str(event_id),
+        f"{current_user.name} hat {email} zum Event eingeladen."
     )
 
     return {"message": f"{email} eingeladen"}
@@ -368,11 +374,7 @@ async def set_proposals(
     if event.organizer_id != current_user.id:
         raise HTTPException(status_code=403, detail="Only the organizer can set date proposals")
 
-    existing = await db.execute(
-        select(models.DateProposal).where(models.DateProposal.event_id == event_id)
-    )
-    for p in existing.scalars().all():
-        await db.delete(p)
+    await db.execute(sql_delete(models.DateProposal).where(models.DateProposal.event_id == event_id))
 
     new_proposals = [
         models.DateProposal(id=uuid.uuid4(), event_id=event_id, proposed_date=d)
@@ -380,6 +382,10 @@ async def set_proposals(
     ]
     db.add_all(new_proposals)
     await db.commit()
+    schedule_organizer_summary(
+        str(event_id),
+        f"{current_user.name} hat die Terminvorschläge aktualisiert ({len(body.dates)} Termine)."
+    )
     return new_proposals
 
 

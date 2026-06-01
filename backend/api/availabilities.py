@@ -9,6 +9,7 @@ from database import get_db
 import models
 import schemas
 from .events import get_current_user
+from tasks import schedule_organizer_summary
 
 router = APIRouter()
 
@@ -50,6 +51,21 @@ async def set_availability(
     
     await db.commit()
     await db.refresh(db_availability)
+
+    event_result = await db.execute(
+        select(models.Event)
+        .join(models.EventParticipant, models.EventParticipant.event_id == models.Event.id)
+        .where(models.EventParticipant.id == participant.id)
+    )
+    event = event_result.scalar_one_or_none()
+    if event:
+        status_labels = {'best': 'Sehr gut', 'possible': 'Möglich', 'impossible': 'Nicht möglich'}
+        label = status_labels.get(str(availability_in.status.value), str(availability_in.status))
+        schedule_organizer_summary(
+            str(event.id),
+            f"{current_user.name} hat für {availability_in.event_date} abgestimmt: {label}."
+        )
+
     return db_availability
 
 @router.get("/{event_id}/availability", response_model=List[schemas.AvailabilityWithName])

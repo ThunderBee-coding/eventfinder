@@ -80,6 +80,10 @@ class DateProposalResponse(BaseModel):
 class DateProposalsSet(BaseModel):
     dates: List[date]
 
+class InviteRequest(BaseModel):
+    email: EmailStr
+    message: Optional[str] = None
+
 class OrganizerTransfer(BaseModel):
     user_id: uuid.UUID
 

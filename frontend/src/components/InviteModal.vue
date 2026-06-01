@@ -8,6 +8,7 @@ const emit = defineEmits<{ close: []; invited: [] }>()
 const { headers } = useAuth()
 
 const email = ref('')
+const message = ref('')
 const loading = ref(false)
 const error = ref('')
 const success = ref('')
@@ -17,9 +18,14 @@ async function invite() {
   if (!email.value.trim()) { error.value = 'E-Mail erforderlich'; return }
   loading.value = true
   try {
-    await axios.post(`/events/${props.eventId}/invite?email=${encodeURIComponent(email.value)}`, {}, { headers: headers() })
+    await axios.post(
+      `/events/${props.eventId}/invite`,
+      { email: email.value, message: message.value || null },
+      { headers: headers() }
+    )
     success.value = `${email.value} wurde eingeladen!`
     email.value = ''
+    message.value = ''
     emit('invited')
   } catch (e: any) {
     error.value = e.response?.data?.detail ?? 'Fehler beim Einladen'
@@ -34,7 +40,10 @@ async function invite() {
     <div style="background:#0d1117; border:1px solid rgba(255,255,255,0.1); border-radius:20px; padding:32px; width:100%; max-width:400px;">
       <h2 style="font-size:18px; font-weight:700; margin-bottom:20px;">Teilnehmer einladen</h2>
       <label style="font-size:12px; color:rgba(255,255,255,0.4); display:block; margin-bottom:6px;">E-Mail-Adresse</label>
-      <input v-model="email" type="email" placeholder="freund@beispiel.de" @keyup.enter="invite" style="width:100%; background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.12); border-radius:10px; padding:10px 14px; color:#fff; font-size:14px; outline:none; margin-bottom:16px; box-sizing:border-box;" />
+      <input v-model="email" type="email" placeholder="freund@beispiel.de" @keyup.enter="invite" style="width:100%; background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.12); border-radius:10px; padding:10px 14px; color:#fff; font-size:14px; outline:none; margin-bottom:14px; box-sizing:border-box;" />
+      <label style="font-size:12px; color:rgba(255,255,255,0.4); display:block; margin-bottom:6px;">Persönliche Nachricht <span style="color:rgba(255,255,255,0.25);">(optional)</span></label>
+      <textarea v-model="message" placeholder="Freue mich auf dich dabei! …" rows="3"
+        style="width:100%; background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.12); border-radius:10px; padding:10px 14px; color:#fff; font-size:14px; outline:none; margin-bottom:16px; box-sizing:border-box; resize:vertical; font-family:inherit;"></textarea>
       <p v-if="error" style="color:#f43f5e; font-size:13px; margin-bottom:12px;">{{ error }}</p>
       <p v-if="success" style="color:#10b981; font-size:13px; margin-bottom:12px;">{{ success }}</p>
       <div style="display:flex; justify-content:flex-end; gap:10px;">
