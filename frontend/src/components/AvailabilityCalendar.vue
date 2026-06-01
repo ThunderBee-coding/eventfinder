@@ -172,7 +172,7 @@ function weatherCodeIcon(code: number | null): string {
           <template v-if="weatherHint(day)?.loading">
             <p style="font-size:11px; color:rgba(255,255,255,0.4); text-align:center; margin:0;">Wetterdaten laden…</p>
           </template>
-          <template v-else-if="weatherHint(day)?.temp_max_median !== null">
+          <template v-else-if="weatherHint(day) != null && weatherHint(day)!.temp_max_median != null">
             <div style="display:flex; justify-content:space-between; font-size:12px; margin-bottom:3px;">
               <span style="color:rgba(255,255,255,0.5);">🌡 Ø Hoch</span>
               <b>{{ Math.round(weatherHint(day)!.temp_max_median!) }}°C</b>
