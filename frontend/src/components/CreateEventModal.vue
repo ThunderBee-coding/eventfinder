@@ -73,7 +73,7 @@ async function submit() {
         </div>
         <div>
           <label style="font-size:12px; color:rgba(255,255,255,0.4); display:block; margin-bottom:8px;">Datumsvorschläge * (1–5)</label>
-          <div v-for="(d, i) in proposedDates" :key="i" style="display:flex; gap:8px; margin-bottom:8px;">
+          <div v-for="(_d, i) in proposedDates" :key="i" style="display:flex; gap:8px; margin-bottom:8px;">
             <input type="date" v-model="proposedDates[i]" style="flex:1; background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); border-radius:10px; padding:9px 12px; color:#fff; font-size:14px; outline:none; color-scheme:dark;" />
             <button v-if="proposedDates.length > 1" @click="removeDate(i)" style="background:rgba(244,63,94,0.15); border:1px solid rgba(244,63,94,0.3); color:#f43f5e; width:36px; border-radius:8px; cursor:pointer; font-size:16px;">×</button>
           </div>
