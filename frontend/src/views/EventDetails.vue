@@ -324,6 +324,8 @@ async function deleteBackground() {
   try {
     await axios.delete(`/events/${eventId}/background`, { headers: headers() })
     await load()
+    editBlur.value = event.value?.background_blur ?? 4
+    editOverlay.value = Math.round((event.value?.background_overlay ?? 0.55) * 100)
   } catch (err) {
     console.error('Background delete failed', err)
   }
@@ -945,7 +947,7 @@ onMounted(async () => {
           <button @click="saveEditMeta" :disabled="!editTitle.trim() || editSaving"
             :style="{
               padding:'10px 24px', borderRadius:'10px', border:'none', fontWeight:600, fontSize:'14px', color:'#000',
-              background: event?.accent_color ?? '#06b6d4',
+              background: editColor ?? '#06b6d4',
               cursor: (!editTitle.trim() || editSaving) ? 'not-allowed' : 'pointer',
               opacity: (!editTitle.trim() || editSaving) ? 0.6 : 1,
             }">{{ editSaving ? 'Speichere…' : 'Speichern' }}</button>
