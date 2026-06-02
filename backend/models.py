@@ -72,6 +72,9 @@ class Event(Base):
     cover_image_path: Mapped[Optional[str]] = mapped_column(String(255))
     address: Mapped[Optional[str]] = mapped_column(Text)
     bundesland: Mapped[Optional[str]] = mapped_column(String(10))
+    background_image_path: Mapped[Optional[str]] = mapped_column(String(255))
+    background_blur: Mapped[int] = mapped_column(Integer, default=4)
+    background_overlay: Mapped[float] = mapped_column(Float, default=0.55)
 
     organizer: Mapped["User"] = relationship(back_populates="events_organized")
     participants: Mapped[List["EventParticipant"]] = relationship(back_populates="event", cascade="all, delete-orphan")
