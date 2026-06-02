@@ -46,6 +46,8 @@ class EventPatch(BaseModel):
     accent_color: Optional[str] = None
     final_date: Optional[date] = None
     is_closed: Optional[bool] = None
+    background_blur: Optional[int] = None
+    background_overlay: Optional[float] = None
 
 class EventResponse(EventBase):
     id: uuid.UUID
@@ -57,6 +59,9 @@ class EventResponse(EventBase):
     bundesland: Optional[str] = None
     latitude: Optional[float] = None
     longitude: Optional[float] = None
+    background_image_path: Optional[str] = None
+    background_blur: int = 4
+    background_overlay: float = 0.55
     created_at: datetime
     class Config:
         from_attributes = True
