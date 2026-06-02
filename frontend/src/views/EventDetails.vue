@@ -447,11 +447,11 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div style="min-height:100vh; background:var(--bg-base);">
-    <!-- Hintergrundbild-Ebenen (position:fixed, hinter allem) -->
+  <div :style="{ minHeight: '100vh', background: event?.background_image_path ? 'transparent' : 'var(--bg-base)', position: 'relative', zIndex: '0' }">
+    <!-- Hintergrundbild-Ebenen (position:fixed, vor body aber hinter Seiteninhalt) -->
     <template v-if="event?.background_image_path">
       <div :style="{
-        position: 'fixed', inset: '0', zIndex: '-2',
+        position: 'fixed', inset: '0', zIndex: '0',
         backgroundImage: `url(/${event.background_image_path})`,
         backgroundSize: 'cover', backgroundPosition: 'center',
         filter: `blur(${bgBlur}px)`,
@@ -459,7 +459,7 @@ onMounted(async () => {
         pointerEvents: 'none',
       }" />
       <div :style="{
-        position: 'fixed', inset: '0', zIndex: '-1',
+        position: 'fixed', inset: '0', zIndex: '1',
         background: `rgba(8,11,20,${bgOverlay})`,
         pointerEvents: 'none',
       }" />
@@ -481,7 +481,7 @@ onMounted(async () => {
       <router-link to="/" style="color:#06b6d4; text-decoration:none; border:1px solid rgba(6,182,212,0.3); padding:10px 20px; border-radius:10px; font-size:14px;">← Zurück zum Dashboard</router-link>
     </div>
 
-    <main v-else style="max-width:1000px; margin:0 auto; padding:32px 24px;">
+    <main v-else style="max-width:1000px; margin:0 auto; padding:32px 24px; position:relative; z-index:2;">
       <EventHero
         :title="event.title"
         :description="event.description"
