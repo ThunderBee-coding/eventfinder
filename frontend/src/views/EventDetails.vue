@@ -869,5 +869,83 @@ onMounted(async () => {
         </div>
       </div>
     </div>
+
+    <!-- Edit-Meta-Modal (Titel, Beschreibung, Farbe, Hintergrundbild) -->
+    <div v-if="showEditMeta"
+      style="position:fixed; inset:0; background:rgba(0,0,0,0.75); display:flex; align-items:center; justify-content:center; padding:16px; z-index:100; backdrop-filter:blur(4px);"
+      @click.self="showEditMeta = false">
+      <div style="background:#0d1117; border:1px solid rgba(255,255,255,0.1); border-radius:20px; padding:32px; width:100%; max-width:480px; max-height:90vh; overflow-y:auto;">
+        <h2 style="font-size:18px; font-weight:700; margin-bottom:24px;">Event bearbeiten</h2>
+
+        <!-- Abschnitt: Inhalt -->
+        <p style="font-size:11px; color:rgba(255,255,255,0.35); text-transform:uppercase; letter-spacing:.08em; margin-bottom:14px;">Inhalt</p>
+
+        <label style="font-size:12px; color:rgba(255,255,255,0.45); display:block; margin-bottom:5px;">Titel</label>
+        <input v-model="editTitle" maxlength="255" placeholder="Event-Titel"
+          style="width:100%; background:rgba(255,255,255,0.07); border:1px solid rgba(255,255,255,0.15); border-radius:8px; padding:9px 14px; color:#fff; font-size:14px; outline:none; box-sizing:border-box; margin-bottom:14px;" />
+
+        <label style="font-size:12px; color:rgba(255,255,255,0.45); display:block; margin-bottom:5px;">Beschreibung <span style="color:rgba(255,255,255,0.2);">(optional)</span></label>
+        <textarea v-model="editDesc" rows="3" placeholder="Kurze Beschreibung des Events…"
+          style="width:100%; background:rgba(255,255,255,0.07); border:1px solid rgba(255,255,255,0.15); border-radius:8px; padding:9px 14px; color:#fff; font-size:14px; outline:none; box-sizing:border-box; resize:vertical; font-family:inherit; margin-bottom:14px;"></textarea>
+
+        <label style="font-size:12px; color:rgba(255,255,255,0.45); display:block; margin-bottom:8px;">Akzentfarbe</label>
+        <div style="display:flex; align-items:center; gap:10px; margin-bottom:24px;">
+          <input type="color" v-model="editColor"
+            style="width:40px; height:36px; border:none; background:transparent; cursor:pointer; padding:0;" />
+          <span style="font-size:13px; color:rgba(255,255,255,0.5); font-family:monospace;">{{ editColor }}</span>
+        </div>
+
+        <!-- Abschnitt: Hintergrundbild -->
+        <p style="font-size:11px; color:rgba(255,255,255,0.35); text-transform:uppercase; letter-spacing:.08em; margin-bottom:14px; border-top:1px solid rgba(255,255,255,0.08); padding-top:20px;">Hintergrundbild</p>
+
+        <!-- Vorschau + Löschen -->
+        <div v-if="event?.background_image_path" style="display:flex; align-items:center; gap:12px; margin-bottom:14px; background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.08); border-radius:10px; padding:10px;">
+          <img :src="`/${event.background_image_path}`"
+            style="width:64px; height:40px; object-fit:cover; border-radius:6px;" />
+          <span style="flex:1; font-size:12px; color:rgba(255,255,255,0.4);">Hintergrundbild gesetzt</span>
+          <button @click="deleteBackground"
+            style="background:rgba(244,63,94,0.12); border:1px solid rgba(244,63,94,0.3); color:rgba(244,63,94,0.8); padding:5px 10px; border-radius:8px; cursor:pointer; font-size:12px;">
+            Löschen
+          </button>
+        </div>
+
+        <label style="font-size:12px; color:rgba(255,255,255,0.45); display:block; margin-bottom:5px;">
+          {{ event?.background_image_path ? 'Neues Bild hochladen' : 'Bild hochladen' }}
+        </label>
+        <input type="file" accept="image/jpeg,image/png,image/webp" @change="uploadBackground"
+          style="width:100%; background:rgba(255,255,255,0.04); border:1.5px dashed rgba(255,255,255,0.15); border-radius:10px; padding:14px; color:rgba(255,255,255,0.5); font-size:13px; cursor:pointer; box-sizing:border-box; margin-bottom:6px;" />
+        <p style="font-size:11px; color:rgba(255,255,255,0.25); margin-bottom:20px;">JPEG, PNG oder WebP · max. 5 MB · wird auf max. 1920 px skaliert</p>
+
+        <!-- Blur-Slider -->
+        <label style="font-size:12px; color:rgba(255,255,255,0.45); display:flex; justify-content:space-between; margin-bottom:6px;">
+          <span>Blur</span>
+          <span style="color:rgba(255,255,255,0.6); font-variant-numeric:tabular-nums;">{{ editBlur }} px</span>
+        </label>
+        <input type="range" min="0" max="20" v-model.number="editBlur"
+          style="width:100%; accent-color:var(--accent, #06b6d4); margin-bottom:18px;" />
+
+        <!-- Transparenz-Slider -->
+        <label style="font-size:12px; color:rgba(255,255,255,0.45); display:flex; justify-content:space-between; margin-bottom:6px;">
+          <span>Overlay-Transparenz</span>
+          <span style="color:rgba(255,255,255,0.6); font-variant-numeric:tabular-nums;">{{ editOverlay }} %</span>
+        </label>
+        <input type="range" min="0" max="100" v-model.number="editOverlay"
+          style="width:100%; accent-color:var(--accent, #06b6d4); margin-bottom:28px;" />
+
+        <!-- Aktions-Buttons -->
+        <div style="display:flex; justify-content:flex-end; gap:10px;">
+          <button @click="showEditMeta = false"
+            style="padding:10px 20px; border-radius:10px; background:transparent; border:1px solid rgba(255,255,255,0.12); color:rgba(255,255,255,0.6); cursor:pointer; font-size:14px;">Abbrechen</button>
+          <button @click="saveEditMeta" :disabled="!editTitle.trim() || editSaving"
+            :style="{
+              padding:'10px 24px', borderRadius:'10px', border:'none', fontWeight:600, fontSize:'14px', color:'#000',
+              background: event?.accent_color ?? '#06b6d4',
+              cursor: (!editTitle.trim() || editSaving) ? 'not-allowed' : 'pointer',
+              opacity: (!editTitle.trim() || editSaving) ? 0.6 : 1,
+            }">{{ editSaving ? 'Speichere…' : 'Speichern' }}</button>
+        </div>
+      </div>
+    </div>
+
   </div>
 </template>
