@@ -207,6 +207,65 @@ async def delete_cover(
         await db.commit()
 
 
+@router.post("/{event_id}/background", response_model=schemas.EventResponse)
+async def upload_background(
+    event_id: uuid.UUID,
+    file: UploadFile = File(...),
+    current_user: models.User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    from PIL import Image
+    import io
+
+    event = await _get_event_as_participant(event_id, current_user, db)
+    if event.organizer_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Only the organizer can upload a background")
+
+    if file.content_type not in ALLOWED_IMAGE_TYPES:
+        raise HTTPException(status_code=415, detail="Only JPEG, PNG, or WebP images are allowed")
+
+    contents = await file.read()
+    if len(contents) > MAX_IMAGE_BYTES:
+        raise HTTPException(status_code=413, detail="Image must be smaller than 5 MB")
+
+    img = Image.open(io.BytesIO(contents))
+    if img.width > 1920:
+        ratio = 1920 / img.width
+        img = img.resize((1920, int(img.height * ratio)), Image.LANCZOS)
+
+    ext = file.content_type.split("/")[1].replace("jpeg", "jpg")
+    filename = f"bg-{uuid.uuid4()}.{ext}"
+    path = f"/app/uploads/{filename}"
+
+    if event.background_image_path:
+        old = f"/app/{event.background_image_path}"
+        if os.path.exists(old):
+            os.remove(old)
+
+    img.save(path, quality=85, optimize=True)
+    event.background_image_path = f"uploads/{filename}"
+    await db.commit()
+    await db.refresh(event)
+    return event
+
+
+@router.delete("/{event_id}/background", status_code=204)
+async def delete_background(
+    event_id: uuid.UUID,
+    current_user: models.User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    event = await _get_event_as_participant(event_id, current_user, db)
+    if event.organizer_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Only the organizer can delete the background")
+    if event.background_image_path:
+        path = f"/app/{event.background_image_path}"
+        if os.path.exists(path):
+            os.remove(path)
+        event.background_image_path = None
+        await db.commit()
+
+
 @router.get("/{event_id}/participants", response_model=List[schemas.ParticipantResponse])
 async def get_participants(
     event_id: uuid.UUID,
