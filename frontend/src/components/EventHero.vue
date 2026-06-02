@@ -14,6 +14,7 @@ const emit = defineEmits<{
   invite: []
   editCover: []
   editLocation: []
+  editMeta: []
   updateLocation: [value: string]
 }>()
 </script>
@@ -64,6 +65,7 @@ const emit = defineEmits<{
             padding: '9px 16px', borderRadius: '10px', border: 'none', cursor: 'pointer',
             fontWeight: 600, fontSize: '13px', whiteSpace: 'nowrap',
           }">+ Einladen</button>
+          <button @click="emit('editMeta')" style="background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.12); color:rgba(255,255,255,0.7); padding:9px 16px; border-radius:10px; cursor:pointer; font-size:13px; font-weight:500; white-space:nowrap;">✏️ Bearbeiten</button>
           <button @click="emit('editCover')" style="background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.12); color:rgba(255,255,255,0.7); padding:9px 16px; border-radius:10px; cursor:pointer; font-size:13px; font-weight:500;">🖼 Cover</button>
         </div>
       </div>

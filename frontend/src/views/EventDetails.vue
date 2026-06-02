@@ -29,6 +29,22 @@ const availStatus = ref<'best'|'possible'|'impossible'>('possible')
 const availComment = ref('')
 const showCoverUpload = ref(false)
 
+// --- Hintergrundbild / Event-Meta-Edit ---
+const showEditMeta = ref(false)
+const editTitle = ref('')
+const editDesc = ref('')
+const editColor = ref('#06b6d4')
+const editBlur = ref(4)
+const editOverlay = ref(55)   // 0–100 für den Slider; beim Speichern ÷ 100
+const editSaving = ref(false)
+
+const bgBlur = computed(() =>
+  showEditMeta.value ? editBlur.value : (event.value?.background_blur ?? 4)
+)
+const bgOverlay = computed(() =>
+  showEditMeta.value ? editOverlay.value / 100 : (event.value?.background_overlay ?? 0.55)
+)
+
 // --- Kalender-Einladung ---
 const showCalendarModal = ref(false)
 const calStartTime = ref('14:00')
@@ -255,6 +271,58 @@ async function uploadCover(e: Event) {
   }
 }
 
+function openEditMeta() {
+  editTitle.value = event.value?.title ?? ''
+  editDesc.value = event.value?.description ?? ''
+  editColor.value = event.value?.accent_color ?? '#06b6d4'
+  editBlur.value = event.value?.background_blur ?? 4
+  editOverlay.value = Math.round((event.value?.background_overlay ?? 0.55) * 100)
+  showEditMeta.value = true
+}
+
+async function saveEditMeta() {
+  editSaving.value = true
+  try {
+    await axios.patch(`/events/${eventId}`, {
+      title: editTitle.value,
+      description: editDesc.value || null,
+      accent_color: editColor.value,
+      background_blur: editBlur.value,
+      background_overlay: editOverlay.value / 100,
+    }, { headers: headers() })
+    showEditMeta.value = false
+    await load()
+  } catch (e) {
+    console.error('Edit meta failed', e)
+  } finally {
+    editSaving.value = false
+  }
+}
+
+async function uploadBackground(e: Event) {
+  const file = (e.target as HTMLInputElement).files?.[0]
+  if (!file) return
+  const fd = new FormData()
+  fd.append('file', file)
+  try {
+    await axios.post(`/events/${eventId}/background`, fd, { headers: headers() })
+    await load()
+    editBlur.value = event.value?.background_blur ?? editBlur.value
+    editOverlay.value = Math.round((event.value?.background_overlay ?? 0.55) * 100)
+  } catch (err) {
+    console.error('Background upload failed', err)
+  }
+}
+
+async function deleteBackground() {
+  try {
+    await axios.delete(`/events/${eventId}/background`, { headers: headers() })
+    await load()
+  } catch (err) {
+    console.error('Background delete failed', err)
+  }
+}
+
 async function updateLocation(value: string) {
   await axios.patch(`/events/${eventId}`, { location_name: value || null }, { headers: headers() })
   await load()
@@ -372,6 +440,22 @@ onMounted(async () => {
 
 <template>
   <div style="min-height:100vh; background:var(--bg-base);">
+    <!-- Hintergrundbild-Ebenen (position:fixed, hinter allem) -->
+    <template v-if="event?.background_image_path">
+      <div :style="{
+        position: 'fixed', inset: '0', zIndex: '-2',
+        backgroundImage: `url(/${event.background_image_path})`,
+        backgroundSize: 'cover', backgroundPosition: 'center',
+        filter: `blur(${bgBlur}px)`,
+        transform: 'scale(1.05)',
+        pointerEvents: 'none',
+      }" />
+      <div :style="{
+        position: 'fixed', inset: '0', zIndex: '-1',
+        background: `rgba(8,11,20,${bgOverlay})`,
+        pointerEvents: 'none',
+      }" />
+    </template>
     <!-- Back nav -->
     <div style="padding:16px 32px; border-bottom:1px solid var(--border); background:rgba(8,11,20,0.8); backdrop-filter:blur(12px); position:sticky; top:0; z-index:10; display:flex; align-items:center; gap:12px;">
       <router-link to="/" style="color:var(--text-secondary); text-decoration:none; font-size:14px;">← Dashboard</router-link>
@@ -401,6 +485,7 @@ onMounted(async () => {
         :is-organizer="isOrganizer"
         @invite="showInvite = true"
         @edit-cover="showCoverUpload = true"
+        @edit-meta="openEditMeta"
         @edit-location="locationSearch = event.address || event.location_name || ''"
         @update-location="updateLocation"
         style="margin-bottom:28px;"
