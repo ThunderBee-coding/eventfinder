@@ -280,6 +280,12 @@ function openEditMeta() {
   showEditMeta.value = true
 }
 
+function closeEditMeta() {
+  editBlur.value = event.value?.background_blur ?? 4
+  editOverlay.value = Math.round((event.value?.background_overlay ?? 0.55) * 100)
+  showEditMeta.value = false
+}
+
 async function saveEditMeta() {
   editSaving.value = true
   try {
@@ -873,7 +879,7 @@ onMounted(async () => {
     <!-- Edit-Meta-Modal (Titel, Beschreibung, Farbe, Hintergrundbild) -->
     <div v-if="showEditMeta"
       style="position:fixed; inset:0; background:rgba(0,0,0,0.75); display:flex; align-items:center; justify-content:center; padding:16px; z-index:100; backdrop-filter:blur(4px);"
-      @click.self="showEditMeta = false">
+      @click.self="closeEditMeta">
       <div style="background:#0d1117; border:1px solid rgba(255,255,255,0.1); border-radius:20px; padding:32px; width:100%; max-width:480px; max-height:90vh; overflow-y:auto;">
         <h2 style="font-size:18px; font-weight:700; margin-bottom:24px;">Event bearbeiten</h2>
 
@@ -934,7 +940,7 @@ onMounted(async () => {
 
         <!-- Aktions-Buttons -->
         <div style="display:flex; justify-content:flex-end; gap:10px;">
-          <button @click="showEditMeta = false"
+          <button @click="closeEditMeta"
             style="padding:10px 20px; border-radius:10px; background:transparent; border:1px solid rgba(255,255,255,0.12); color:rgba(255,255,255,0.6); cursor:pointer; font-size:14px;">Abbrechen</button>
           <button @click="saveEditMeta" :disabled="!editTitle.trim() || editSaving"
             :style="{
