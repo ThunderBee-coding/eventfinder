@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, date
 from typing import List, Optional
-from sqlalchemy import String, ForeignKey, DateTime, Boolean, Enum, Float, Date, Integer, UniqueConstraint, Text
+from sqlalchemy import String, ForeignKey, DateTime, Boolean, Enum, Float, Date, Integer, SmallInteger, UniqueConstraint, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from database import Base
 import enum
@@ -73,7 +73,7 @@ class Event(Base):
     address: Mapped[Optional[str]] = mapped_column(Text)
     bundesland: Mapped[Optional[str]] = mapped_column(String(10))
     background_image_path: Mapped[Optional[str]] = mapped_column(String(255))
-    background_blur: Mapped[int] = mapped_column(Integer, default=4)
+    background_blur: Mapped[int] = mapped_column(SmallInteger, default=4)
     background_overlay: Mapped[float] = mapped_column(Float, default=0.55)
 
     organizer: Mapped["User"] = relationship(back_populates="events_organized")
