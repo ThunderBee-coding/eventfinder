@@ -3,7 +3,7 @@ services:
     image: postgres:15-alpine
     container_name: eventfinder-db
     environment:
-      POSTGRES_USER: user
+      POSTGRES_USER: eventfinder
       POSTGRES_PASSWORD: password
       POSTGRES_DB: eventfinder
     volumes:
@@ -29,7 +29,7 @@ services:
     env_file:
       - ./backend/.env
     environment:
-      - DATABASE_URL=postgresql+asyncpg://user:password@db:5432/eventfinder
+      - DATABASE_URL=postgresql+asyncpg://eventfinder:password@db:5432/eventfinder
       - REDIS_URL=redis://redis:6379/0
     volumes:
       - ./backend:/app
@@ -48,7 +48,7 @@ services:
     env_file:
       - ./backend/.env
     environment:
-      - DATABASE_URL=postgresql+asyncpg://user:password@db:5432/eventfinder
+      - DATABASE_URL=postgresql+asyncpg://eventfinder:password@db:5432/eventfinder
       - REDIS_URL=redis://redis:6379/0
     volumes:
       - ./backend:/app
