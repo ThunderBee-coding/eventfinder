@@ -53,6 +53,18 @@ const calDescription = ref('')
 const calSending = ref(false)
 const calSent = ref(false)
 
+// --- Kalender-Abo ---
+const calToken = ref<string | null>(null)
+const calTokenLoading = ref(false)
+const showCalSubscribe = ref(false)
+const calLinkSending = ref(false)
+const calLinkSent = ref(false)
+
+// --- Event-Uhrzeit (Organizer) ---
+const eventStartTime = ref('')
+const eventEndTime = ref('')
+const timeSaving = ref(false)
+
 async function sendCalendarInvites() {
   calSending.value = true
   try {
@@ -67,6 +79,63 @@ async function sendCalendarInvites() {
     console.error('Calendar invites failed', e)
   } finally {
     calSending.value = false
+  }
+}
+
+async function fetchCalendarToken() {
+  calTokenLoading.value = true
+  try {
+    const res = await axios.post('/auth/calendar-token', {}, { headers: headers() })
+    calToken.value = res.data.calendar_token
+    showCalSubscribe.value = true
+  } catch (e) {
+    console.error('Calendar token fetch failed', e)
+  } finally {
+    calTokenLoading.value = false
+  }
+}
+
+function calendarWebcalUrl(): string {
+  return `webcal://${window.location.host}/events/${eventId}/calendar.ics?token=${calToken.value}`
+}
+
+function calendarHttpsUrl(): string {
+  return `${window.location.origin}/events/${eventId}/calendar.ics?token=${calToken.value}`
+}
+
+async function copyCalendarUrl() {
+  try {
+    await navigator.clipboard.writeText(calendarHttpsUrl())
+  } catch {
+    /* Fallback: Browser unterstützt Clipboard API nicht */
+  }
+}
+
+async function sendCalendarLinks() {
+  calLinkSending.value = true
+  try {
+    await axios.post(`/events/${eventId}/send-calendar-links`, {}, { headers: headers() })
+    calLinkSent.value = true
+    setTimeout(() => { calLinkSent.value = false }, 3000)
+  } catch (e) {
+    console.error('Send calendar links failed', e)
+  } finally {
+    calLinkSending.value = false
+  }
+}
+
+async function saveEventTime() {
+  timeSaving.value = true
+  try {
+    await axios.patch(`/events/${eventId}`, {
+      event_start_time: eventStartTime.value || null,
+      event_end_time: eventEndTime.value || null,
+    }, { headers: headers() })
+    await load()
+  } catch (e) {
+    console.error('Save event time failed', e)
+  } finally {
+    timeSaving.value = false
   }
 }
 
@@ -216,6 +285,8 @@ async function load() {
       axios.get(`/events/${eventId}/availability`, { headers: headers() }),
     ])
     event.value = evRes.data
+    eventStartTime.value = event.value?.event_start_time ?? ''
+    eventEndTime.value = event.value?.event_end_time ?? ''
     participants.value = pRes.data
     proposals.value = propRes.data
     availabilities.value = avRes.data
@@ -667,6 +738,50 @@ onMounted(async () => {
             />
           </div>
 
+          <!-- Kalender abonnieren (alle Teilnehmer) -->
+          <div style="background:var(--bg-surface); border:1px solid var(--border); border-radius:16px; padding:20px;">
+            <p style="font-size:11px; color:rgba(255,255,255,0.35); text-transform:uppercase; letter-spacing:.08em; margin-bottom:12px;">🗓 Kalender abonnieren</p>
+            <p style="font-size:13px; color:rgba(255,255,255,0.4); margin-bottom:14px;">Terminvorschläge und Finaltermin erscheinen automatisch in deinem Kalender.</p>
+
+            <div v-if="!showCalSubscribe">
+              <button @click="fetchCalendarToken" :disabled="calTokenLoading"
+                :style="{ width:'100%', padding:'10px', borderRadius:'12px', border:'none', cursor: calTokenLoading ? 'default' : 'pointer', fontWeight:600, fontSize:'13px', color:'#000', background: event.accent_color, opacity: calTokenLoading ? 0.7 : 1 }">
+                {{ calTokenLoading ? 'Lade…' : '🔗 Meine Kalender-URL anzeigen' }}
+              </button>
+            </div>
+
+            <div v-else>
+              <div style="background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.1); border-radius:10px; padding:10px 12px; font-size:11px; color:rgba(255,255,255,0.5); word-break:break-all; margin-bottom:10px; font-family:monospace;">
+                {{ calendarHttpsUrl() }}
+              </div>
+              <div style="display:flex; gap:8px; margin-bottom:12px;">
+                <a :href="calendarWebcalUrl()"
+                  :style="{ flex:1, padding:'8px', borderRadius:'10px', border:'none', cursor:'pointer', fontWeight:600, fontSize:'12px', color:'#000', background: event.accent_color, textAlign:'center', textDecoration:'none', display:'flex', alignItems:'center', justifyContent:'center' }">
+                  📅 In Kalender öffnen
+                </a>
+                <button @click="copyCalendarUrl"
+                  style="flex:1; padding:8px; border-radius:10px; border:1px solid rgba(255,255,255,0.15); background:transparent; color:rgba(255,255,255,0.7); cursor:pointer; font-size:12px; font-weight:600;">
+                  📋 URL kopieren
+                </button>
+              </div>
+              <p style="font-size:11px; color:rgba(255,255,255,0.25); line-height:1.6; margin:0;">
+                Google: Andere Kalender → Per URL · Outlook: Kalender → Aus dem Internet · Apple: Ablage → Kalenderabonnement
+              </p>
+              <p style="font-size:11px; color:rgba(244,63,94,0.5); margin:8px 0 0;">⚠ Diese URL ist persönlich — bitte nicht weitergeben.</p>
+            </div>
+
+            <!-- Organizer: Kalender-Link an alle senden -->
+            <div v-if="isOrganizer" style="margin-top:14px; padding-top:14px; border-top:1px solid rgba(255,255,255,0.07);">
+              <div v-if="calLinkSent" style="text-align:center; color:#10b981; font-size:13px; padding:6px 0;">
+                ✓ Links werden versendet!
+              </div>
+              <button v-else @click="sendCalendarLinks" :disabled="calLinkSending"
+                style="width:100%; padding:9px; border-radius:10px; border:1px solid rgba(255,255,255,0.15); background:transparent; color:rgba(255,255,255,0.7); cursor:pointer; font-size:12px; font-weight:600;">
+                {{ calLinkSending ? 'Sende…' : `📨 Kalender-Link an alle ${participants.length} senden` }}
+              </button>
+            </div>
+          </div>
+
           <!-- Kalender-Einladung (nur Organisator + finales Datum gesetzt) -->
           <div v-if="isOrganizer && event.final_date"
             style="background:var(--bg-surface); border:1px solid var(--border); border-radius:16px; padding:20px;">
@@ -679,6 +794,28 @@ onMounted(async () => {
               :style="{ width:'100%', padding:'10px', borderRadius:'12px', border:'none', cursor:'pointer', fontWeight:600, fontSize:'13px', color:'#000', background: event.accent_color, boxShadow: `0 0 20px ${event.accent_color}44` }">
               📅 Kalender-Einladung versenden
             </button>
+
+            <!-- Uhrzeit für Kalender -->
+            <div style="margin-top:16px; padding-top:14px; border-top:1px solid rgba(255,255,255,0.07);">
+              <p style="font-size:11px; color:rgba(255,255,255,0.35); text-transform:uppercase; letter-spacing:.08em; margin-bottom:10px;">Uhrzeit im Kalender</p>
+              <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:10px;">
+                <div>
+                  <label style="font-size:11px; color:rgba(255,255,255,0.35); display:block; margin-bottom:4px;">Beginn</label>
+                  <input type="time" v-model="eventStartTime"
+                    style="width:100%; background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.12); border-radius:8px; padding:8px 10px; color:#fff; font-size:13px; outline:none; color-scheme:dark; box-sizing:border-box;" />
+                </div>
+                <div>
+                  <label style="font-size:11px; color:rgba(255,255,255,0.35); display:block; margin-bottom:4px;">Ende</label>
+                  <input type="time" v-model="eventEndTime"
+                    style="width:100%; background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.12); border-radius:8px; padding:8px 10px; color:#fff; font-size:13px; outline:none; color-scheme:dark; box-sizing:border-box;" />
+                </div>
+              </div>
+              <p style="font-size:11px; color:rgba(255,255,255,0.25); margin-bottom:10px;">Ohne Uhrzeit wird ein Ganztages-Termin im Kalender eingetragen.</p>
+              <button @click="saveEventTime" :disabled="timeSaving"
+                :style="{ width:'100%', padding:'8px', borderRadius:'10px', border:'none', cursor: timeSaving ? 'default' : 'pointer', fontWeight:600, fontSize:'12px', color:'#000', background: event.accent_color, opacity: timeSaving ? 0.7 : 1 }">
+                {{ timeSaving ? 'Speichere…' : 'Uhrzeit speichern' }}
+              </button>
+            </div>
           </div>
         </div>
 
