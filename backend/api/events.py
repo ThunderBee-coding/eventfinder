@@ -54,6 +54,8 @@ async def create_event(
     current_user: models.User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    if current_user.role not in (models.UserRole.organizer, models.UserRole.superadmin):
+        raise HTTPException(status_code=403, detail="Nur Organisatoren und Admins dürfen Events anlegen")
     db_event = models.Event(
         title=event_in.title,
         description=event_in.description,

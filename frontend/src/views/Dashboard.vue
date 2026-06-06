@@ -39,15 +39,17 @@ function cardHover(el: HTMLElement, accent: string, enter: boolean) {
 
 const router = useRouter()
 
-const isAdmin = computed(() => {
+function _jwtRole(): string {
   try {
     const token = localStorage.getItem('token')
-    if (!token) return false
+    if (!token) return ''
     const b64 = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')
-    const payload = JSON.parse(atob(b64))
-    return payload.role === 'superadmin'
-  } catch { return false }
-})
+    return JSON.parse(atob(b64)).role ?? ''
+  } catch { return '' }
+}
+
+const isAdmin = computed(() => _jwtRole() === 'superadmin')
+const canCreateEvent = computed(() => ['organizer', 'superadmin'].includes(_jwtRole()))
 
 onMounted(fetchEvents)
 </script>
@@ -58,7 +60,7 @@ onMounted(fetchEvents)
     <header style="border-bottom:1px solid var(--border); padding:16px 32px; display:flex; align-items:center; justify-content:space-between; backdrop-filter:blur(12px); position:sticky; top:0; z-index:10; background:rgba(8,11,20,0.8);">
       <span style="font-weight:700; font-size:18px; letter-spacing:-0.5px;">EventFinder</span>
       <div style="display:flex; align-items:center; gap:12px;">
-        <button @click="showCreate = true"
+        <button v-if="canCreateEvent" @click="showCreate = true"
           style="display:flex; align-items:center; gap:6px; background:#06b6d4; color:#000; border:none; padding:9px 18px; border-radius:10px; font-weight:600; font-size:14px; cursor:pointer; box-shadow:0 0 20px rgba(6,182,212,0.4);">
           ＋ Neues Event
         </button>
@@ -86,8 +88,10 @@ onMounted(fetchEvents)
 
       <div v-else-if="events.length === 0" style="text-align:center; padding:80px 0;">
         <div style="font-size:48px; margin-bottom:16px; opacity:0.3;">🗓️</div>
-        <p style="color:var(--text-secondary); margin-bottom:24px;">Noch keine Events. Erstelle dein erstes!</p>
-        <button @click="showCreate = true"
+        <p style="color:var(--text-secondary); margin-bottom:24px;">
+          {{ canCreateEvent ? 'Noch keine Events. Erstelle dein erstes!' : 'Du wurdest noch zu keinem Event eingeladen.' }}
+        </p>
+        <button v-if="canCreateEvent" @click="showCreate = true"
           style="background:#06b6d4; color:#000; border:none; padding:12px 28px; border-radius:12px; font-weight:600; cursor:pointer; font-size:15px;">
           ＋ Event erstellen
         </button>
@@ -124,8 +128,8 @@ onMounted(fetchEvents)
           </div>
         </router-link>
 
-        <!-- Add card -->
-        <div @click="showCreate = true"
+        <!-- Add card — nur für Organisatoren/Admins -->
+        <div v-if="canCreateEvent" @click="showCreate = true"
           style="border-radius:18px; border:1.5px dashed rgba(255,255,255,0.1); min-height:180px; display:flex; align-items:center; justify-content:center; cursor:pointer; transition:all .2s;"
           @mouseenter="e => { (e.currentTarget as HTMLElement).style.borderColor='rgba(255,255,255,0.25)' }"
           @mouseleave="e => { (e.currentTarget as HTMLElement).style.borderColor='rgba(255,255,255,0.1)' }">
