@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.security import OAuth2PasswordBearer
 from fastapi.responses import HTMLResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
@@ -14,6 +15,8 @@ import auth
 from tasks import send_magic_link_email
 
 router = APIRouter()
+
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/verify")
 
 @router.post("/magic-link", status_code=status.HTTP_200_OK)
 async def request_magic_link(request: schemas.MagicLinkRequest, db: AsyncSession = Depends(get_db)):
@@ -135,5 +138,26 @@ async def verify_magic_link(token: str, db: AsyncSession = Depends(get_db)):
     
     # Create JWT
     access_token = auth.create_access_token(data={"sub": str(user.id), "email": user.email, "role": user.role})
-    
+
     return {"access_token": access_token, "token_type": "bearer"}
+
+@router.post("/calendar-token")
+async def get_calendar_token(
+    token: str = Depends(oauth2_scheme),
+    db: AsyncSession = Depends(get_db),
+):
+    payload = auth.verify_token(token)
+    if payload is None:
+        raise HTTPException(status_code=401, detail="Invalid token")
+    user_id = payload.get("sub")
+    result = await db.execute(select(models.User).where(models.User.id == uuid.UUID(user_id)))
+    user = result.scalar_one_or_none()
+    if user is None:
+        raise HTTPException(status_code=401, detail="User not found")
+
+    if not user.calendar_token:
+        user.calendar_token = secrets.token_urlsafe(32)
+        await db.commit()
+        await db.refresh(user)
+
+    return {"calendar_token": user.calendar_token}
