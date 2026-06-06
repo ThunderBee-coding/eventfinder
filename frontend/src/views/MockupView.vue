@@ -1,22 +1,24 @@
 <template>
   <div class="vote-root">
-    <!-- Loading State -->
-    <div v-if="loading" class="header">
-      <div class="event-title">Lade…</div>
-      <div class="event-sub">Abstimmung</div>
-    </div>
-
     <!-- Error State -->
-    <div v-else-if="error" class="error-msg">{{ error }}</div>
+    <div v-if="error" class="error-msg">{{ error }}</div>
 
-    <!-- Loaded State -->
     <template v-else>
       <div class="header">
-        <div class="event-title">{{ event?.title }}</div>
-        <div class="event-sub">Abstimmung · {{ proposals.length }} Terminvorschläge</div>
+        <div class="event-title">{{ loading ? '…' : event?.title }}</div>
+        <div class="event-sub">Abstimmung{{ loading ? '' : ` · ${proposals.length} Terminvorschläge` }}</div>
       </div>
 
-      <div class="proposals">
+      <!-- Loading: Platzhalter-Cards -->
+      <div v-if="loading" class="proposals">
+        <div v-for="i in 3" :key="i" class="card card-loading">
+          <div class="skeleton skeleton-date"></div>
+          <div class="skeleton skeleton-buttons"></div>
+        </div>
+      </div>
+
+      <!-- Loaded State -->
+      <div v-else class="proposals">
         <div
           v-for="p in proposals"
           :key="p.date"
@@ -235,7 +237,8 @@ onMounted(loadVotePage)
   flex-direction: column;
   align-items: center;
   gap: 4px;
-  padding: 10px 4px;
+  padding: 13px 4px;
+  min-height: 44px;
   border-radius: 10px;
   border: 1px solid rgba(255,255,255,0.1);
   background: rgba(255,255,255,0.04);
@@ -303,5 +306,19 @@ onMounted(loadVotePage)
 @keyframes fade-in {
   from { opacity: 0; transform: translateX(-50%) translateY(8px); }
   to   { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+
+/* Skeleton loading cards */
+.card-loading { pointer-events: none; }
+.skeleton {
+  background: rgba(255,255,255,0.06);
+  border-radius: 6px;
+  animation: shimmer 1.4s infinite;
+}
+.skeleton-date    { height: 18px; width: 60%; margin-bottom: 14px; }
+.skeleton-buttons { height: 44px; width: 100%; }
+@keyframes shimmer {
+  0%, 100% { opacity: 0.5; }
+  50%       { opacity: 1; }
 }
 </style>
