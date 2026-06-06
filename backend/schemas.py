@@ -118,3 +118,28 @@ class AvailabilityWithName(AvailabilityBase):
     participant_name: str = ""
     class Config:
         from_attributes = True
+
+
+# --- Vote Page Schemas ---
+
+class VoteRequest(BaseModel):
+    status: AvailabilityStatus  # "best" | "possible" | "impossible"
+
+class VoteStatusEntry(BaseModel):
+    best: List[str] = []
+    possible: List[str] = []
+    impossible: List[str] = []
+    pending: List[str] = []
+
+class ProposalVoteState(BaseModel):
+    date: date
+    my_vote: Optional[str] = None  # "best" | "possible" | "impossible" | None
+    votes: VoteStatusEntry
+
+class VoteEventInfo(BaseModel):
+    id: uuid.UUID
+    title: str
+
+class VotePageResponse(BaseModel):
+    event: VoteEventInfo
+    proposals: List[ProposalVoteState]
