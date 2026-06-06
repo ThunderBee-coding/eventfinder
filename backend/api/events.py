@@ -1,8 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
+from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, delete as sql_delete
 from typing import List
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date as date_type
 import uuid
 import os
 import secrets
@@ -19,6 +20,17 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/verify")
 
 ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/webp"}
 MAX_IMAGE_BYTES = 5 * 1024 * 1024  # 5 MB
+
+
+def _ical_escape(text: str) -> str:
+    if not text:
+        return ""
+    return (
+        text.replace("\\", "\\\\")
+            .replace(";", "\\;")
+            .replace(",", "\\,")
+            .replace("\n", "\\n")
+    )
 
 
 async def get_current_user(token: str = Depends(oauth2_scheme), db: AsyncSession = Depends(get_db)):
@@ -494,7 +506,6 @@ async def get_weather_hints(
     db: AsyncSession = Depends(get_db),
 ):
     import httpx
-    from datetime import date as date_type
 
     event = await _get_event_as_participant(event_id, current_user, db)
 
@@ -573,3 +584,142 @@ async def get_weather_hints(
             })
 
     return hints
+
+
+@router.get("/{event_id}/calendar.ics")
+async def get_calendar_feed(
+    event_id: uuid.UUID,
+    token: str,
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(models.User).where(models.User.calendar_token == token)
+    )
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=401, detail="Invalid calendar token")
+
+    part_result = await db.execute(
+        select(models.EventParticipant)
+        .where(models.EventParticipant.event_id == event_id)
+        .where(models.EventParticipant.user_id == user.id)
+    )
+    if not part_result.scalar_one_or_none():
+        raise HTTPException(status_code=403, detail="Not a participant of this event")
+
+    ev_result = await db.execute(select(models.Event).where(models.Event.id == event_id))
+    event = ev_result.scalar_one_or_none()
+    if not event:
+        raise HTTPException(status_code=404, detail="Event not found")
+
+    prop_result = await db.execute(
+        select(models.DateProposal)
+        .where(models.DateProposal.event_id == event_id)
+        .order_by(models.DateProposal.proposed_date)
+    )
+    proposals = prop_result.scalars().all()
+
+    parts_result = await db.execute(
+        select(models.User, models.EventParticipant)
+        .join(models.EventParticipant, models.User.id == models.EventParticipant.user_id)
+        .where(models.EventParticipant.event_id == event_id)
+    )
+    participants = parts_result.all()
+
+    avail_result = await db.execute(
+        select(models.Availability)
+        .join(models.EventParticipant, models.EventParticipant.id == models.Availability.participant_id)
+        .where(models.EventParticipant.event_id == event_id)
+    )
+    availabilities = avail_result.scalars().all()
+
+    ep_to_name = {ep.id: u.name for u, ep in participants}
+    location = _ical_escape(event.address or event.location_name or "")
+    title = _ical_escape(event.title)
+
+    lines = [
+        "BEGIN:VCALENDAR",
+        "VERSION:2.0",
+        "PRODID:-//EventFinder//EventFinder//DE",
+        f"X-WR-CALNAME:{title}",
+        "REFRESH-INTERVAL;VALUE=DURATION:PT1H",
+        "X-PUBLISHED-TTL:PT1H",
+    ]
+
+    for p in proposals:
+        d = p.proposed_date
+        date_str = d.strftime("%Y%m%d")
+        next_day = (d + timedelta(days=1)).strftime("%Y%m%d")
+
+        day_avails = [a for a in availabilities if a.event_date == d]
+        voted_ep_ids = {a.participant_id for a in day_avails}
+
+        best = [ep_to_name.get(a.participant_id, "?") for a in day_avails if a.status.value == "best"]
+        possible = [ep_to_name.get(a.participant_id, "?") for a in day_avails if a.status.value == "possible"]
+        impossible = [ep_to_name.get(a.participant_id, "?") for a in day_avails if a.status.value == "impossible"]
+        pending = [u.name for u, ep in participants if ep.id not in voted_ep_ids]
+
+        desc_parts = []
+        if best:
+            desc_parts.append(f"Perfekt: {', '.join(best)}")
+        if possible:
+            desc_parts.append(f"Moeglich: {', '.join(possible)}")
+        if impossible:
+            desc_parts.append(f"Nicht moeglich: {', '.join(impossible)}")
+        if pending:
+            desc_parts.append(f"Ausstehend: {', '.join(pending)}")
+        description = _ical_escape("Abstimmung:\n" + "\n".join(desc_parts) if desc_parts else "Noch keine Abstimmungen")
+
+        lines += [
+            "BEGIN:VEVENT",
+            f"UID:proposal-{date_str}-{event_id}@eventfinder",
+            f"DTSTART;VALUE=DATE:{date_str}",
+            f"DTEND;VALUE=DATE:{next_day}",
+            f"SUMMARY:[Vorschlag] {title}",
+            "STATUS:TENTATIVE",
+            "TRANSP:TRANSPARENT",
+            f"LOCATION:{location}",
+            f"DESCRIPTION:{description}",
+            "END:VEVENT",
+        ]
+
+    if event.final_date:
+        d = event.final_date
+        date_str = d.strftime("%Y%m%d")
+
+        if event.event_start_time and event.event_end_time:
+            start_hhmm = event.event_start_time.replace(":", "") + "00"
+            end_hhmm = event.event_end_time.replace(":", "") + "00"
+            lines += [
+                "BEGIN:VEVENT",
+                f"UID:final-{event_id}@eventfinder",
+                f"DTSTART;TZID=Europe/Berlin:{date_str}T{start_hhmm}",
+                f"DTEND;TZID=Europe/Berlin:{date_str}T{end_hhmm}",
+                f"SUMMARY:{title}",
+                "STATUS:CONFIRMED",
+                "TRANSP:OPAQUE",
+                f"LOCATION:{location}",
+                "END:VEVENT",
+            ]
+        else:
+            next_day = (d + timedelta(days=1)).strftime("%Y%m%d")
+            lines += [
+                "BEGIN:VEVENT",
+                f"UID:final-{event_id}@eventfinder",
+                f"DTSTART;VALUE=DATE:{date_str}",
+                f"DTEND;VALUE=DATE:{next_day}",
+                f"SUMMARY:{title}",
+                "STATUS:CONFIRMED",
+                "TRANSP:OPAQUE",
+                f"LOCATION:{location}",
+                "END:VEVENT",
+            ]
+
+    lines.append("END:VCALENDAR")
+    ical_content = "\r\n".join(lines) + "\r\n"
+
+    return Response(
+        content=ical_content,
+        media_type="text/calendar; charset=utf-8",
+        headers={"Content-Disposition": 'attachment; filename="event.ics"'},
+    )
