@@ -113,7 +113,7 @@ async function loadVotePage() {
   loading.value = true
   error.value = null
   try {
-    const res = await axios.get(`/vote/${eventId}`, { params: { token } })
+    const res = await axios.get(`/api/vote/${eventId}`, { params: { token } })
     event.value = res.data.event
     proposals.value = res.data.proposals
   } catch (e: any) {
@@ -137,7 +137,7 @@ async function vote(date: string, status: string) {
   voting.value = date
   try {
     const res = await axios.post(
-      `/vote/${eventId}/${date}`,
+      `/api/vote/${eventId}/${date}`,
       { status },
       { params: { token } }
     )

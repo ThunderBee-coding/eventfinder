@@ -31,7 +31,7 @@ app.include_router(api_events.router, prefix="/events", tags=["events"])
 app.include_router(api_availabilities.router, prefix="/events", tags=["availabilities"])
 app.include_router(api_admin_settings.router, prefix="/api/admin", tags=["admin"])
 app.include_router(api_geocode.router, tags=["geocode"])
-app.include_router(api_vote.router, prefix="/vote", tags=["vote"])
+app.include_router(api_vote.router, prefix="/api/vote", tags=["vote"])
 
 os.makedirs("/app/uploads", exist_ok=True)
 app.mount("/uploads", StaticFiles(directory="/app/uploads"), name="uploads")
