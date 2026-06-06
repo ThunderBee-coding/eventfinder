@@ -3,12 +3,14 @@ import Login from '../views/Login.vue'
 import Dashboard from '../views/Dashboard.vue'
 import EventDetails from '../views/EventDetails.vue'
 import AdminSettings from '../views/AdminSettings.vue'
+import VoteView from '../views/MockupView.vue'
 
 const routes = [
   { path: '/login', name: 'Login', component: Login },
   { path: '/', name: 'Dashboard', component: Dashboard, meta: { requiresAuth: true } },
   { path: '/event/:id', name: 'EventDetails', component: EventDetails, meta: { requiresAuth: true } },
   { path: '/admin/settings', name: 'AdminSettings', component: AdminSettings, meta: { requiresAuth: true, requiresAdmin: true } },
+  { path: '/vote/:eventId', name: 'Vote', component: VoteView },
 ]
 
 const router = createRouter({ history: createWebHistory(), routes })
