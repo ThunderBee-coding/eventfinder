@@ -33,6 +33,32 @@ def _ical_escape(text: str) -> str:
     )
 
 
+def _ical_fold(text: str) -> str:
+    """RFC 5545 §3.1: Zeilen > 75 Oktetts mit CRLF+Space falten."""
+    lines = text.split("\r\n")
+    folded = []
+    for line in lines:
+        encoded = line.encode("utf-8")
+        if len(encoded) <= 75:
+            folded.append(line)
+            continue
+        # Falte in 75-Oktett-Blöcke (erste Zeile 75, Fortsetzungen 74 + führendes Leerzeichen)
+        chunks = []
+        pos = 0
+        first = True
+        while pos < len(encoded):
+            limit = 75 if first else 74
+            chunk = encoded[pos:pos + limit]
+            # Nicht mitten in einem UTF-8-Multibyte-Zeichen trennen
+            while len(chunk) > 0 and (chunk[-1] & 0xC0) == 0x80:
+                chunk = chunk[:-1]
+            chunks.append(("" if first else " ") + chunk.decode("utf-8"))
+            pos += len(chunk)
+            first = False
+        folded.append("\r\n".join(chunks))
+    return "\r\n".join(folded)
+
+
 async def get_current_user(token: str = Depends(oauth2_scheme), db: AsyncSession = Depends(get_db)):
     payload = auth.verify_token(token)
     if payload is None:
@@ -688,8 +714,11 @@ async def get_calendar_feed(
         date_str = d.strftime("%Y%m%d")
 
         if event.event_start_time and event.event_end_time:
-            start_hhmm = event.event_start_time.replace(":", "") + "00"
-            end_hhmm = event.event_end_time.replace(":", "") + "00"
+            # Normalisiere "HH:MM" → "HHMMSS"
+            start_parts = event.event_start_time.split(":")
+            end_parts = event.event_end_time.split(":")
+            start_hhmm = f"{start_parts[0].zfill(2)}{start_parts[1].zfill(2)}00"
+            end_hhmm = f"{end_parts[0].zfill(2)}{end_parts[1].zfill(2)}00"
             lines += [
                 "BEGIN:VEVENT",
                 f"UID:final-{event_id}@eventfinder",
@@ -716,7 +745,7 @@ async def get_calendar_feed(
             ]
 
     lines.append("END:VCALENDAR")
-    ical_content = "\r\n".join(lines) + "\r\n"
+    ical_content = _ical_fold("\r\n".join(lines) + "\r\n")
 
     return Response(
         content=ical_content,
