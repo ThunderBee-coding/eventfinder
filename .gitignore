@@ -19,3 +19,5 @@ backend/uploads/
 
 # OS
 .DS_Store
+backups/*.sql
+backups/*.sql.gz
