@@ -686,10 +686,13 @@ async def get_calendar_feed(
         "X-PUBLISHED-TTL:PT1H",
     ]
 
+    frontend_url = os.getenv("FRONTEND_URL", "https://eventfinder.thunderbee.uk").rstrip("/")
+
     for p in proposals:
         d = p.proposed_date
         date_str = d.strftime("%Y%m%d")
         next_day = (d + timedelta(days=1)).strftime("%Y%m%d")
+        iso_date = d.strftime("%Y-%m-%d")
 
         day_avails = [a for a in availabilities if a.event_date == d]
         voted_ep_ids = {a.participant_id for a in day_avails}
@@ -709,6 +712,7 @@ async def get_calendar_feed(
         if pending:
             desc_parts.append(f"Ausstehend: {', '.join(pending)}")
         description = _ical_escape("Abstimmung:\n" + "\n".join(desc_parts) if desc_parts else "Noch keine Abstimmungen")
+        vote_url = f"{frontend_url}/vote/{event_id}?token={token}&date={iso_date}"
 
         lines += [
             "BEGIN:VEVENT",
@@ -720,6 +724,7 @@ async def get_calendar_feed(
             "TRANSP:TRANSPARENT",
             f"LOCATION:{location}",
             f"DESCRIPTION:{description}",
+            f"URL:{vote_url}",
             "END:VEVENT",
         ]
 
