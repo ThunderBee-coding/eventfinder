@@ -507,6 +507,20 @@ async def send_calendar_invites_endpoint(
     return {"message": "Kalender-Einladungen werden versendet"}
 
 
+@router.post("/{event_id}/send-calendar-links", status_code=200)
+async def send_calendar_links_endpoint(
+    event_id: uuid.UUID,
+    current_user: models.User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    from tasks import send_calendar_subscription_emails
+    event = await _get_event_as_participant(event_id, current_user, db)
+    if event.organizer_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Only the organizer can send calendar links")
+    send_calendar_subscription_emails.delay(str(event_id))
+    return {"message": "Kalender-Links werden versendet"}
+
+
 @router.get("/{event_id}/holidays")
 async def get_holidays(
     event_id: uuid.UUID,

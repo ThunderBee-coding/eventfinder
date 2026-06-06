@@ -431,3 +431,78 @@ async def _fetch_weather_history_async(lat: float, lon: float):
 
     await engine.dispose()
     print(f"Weather history stored for {lat_grid},{lon_grid}: {len(buckets)} day-buckets")
+
+
+@celery_app.task
+def send_calendar_subscription_emails(event_id: str):
+    asyncio.run(_send_calendar_subscription_emails_async(event_id))
+
+
+async def _send_calendar_subscription_emails_async(event_id: str):
+    import sys
+    import secrets as secrets_mod
+    from urllib.parse import urlparse
+    app_dir = os.path.dirname(os.path.abspath(__file__))
+    if app_dir not in sys.path:
+        sys.path.insert(0, app_dir)
+    import models
+    from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
+    from sqlalchemy.orm import sessionmaker
+    from sqlalchemy import select
+
+    engine = create_async_engine(os.getenv("DATABASE_URL"), echo=False)
+    async_session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+
+    try:
+        async with async_session() as session:
+            event_result = await session.execute(
+                select(models.Event).where(models.Event.id == uuid.UUID(event_id))
+            )
+            event = event_result.scalar_one_or_none()
+            if not event:
+                return
+
+            parts_result = await session.execute(
+                select(models.User)
+                .join(models.EventParticipant, models.User.id == models.EventParticipant.user_id)
+                .where(models.EventParticipant.event_id == event.id)
+            )
+            participants = parts_result.scalars().all()
+
+            settings = _get_smtp_settings()
+            base_url = settings.get("frontend_url", "http://localhost:5173").rstrip("/")
+            webcal_host = urlparse(base_url).netloc
+
+            for participant in participants:
+                if not participant.calendar_token:
+                    participant.calendar_token = secrets_mod.token_urlsafe(32)
+                    await session.commit()
+                    await session.refresh(participant)
+
+                ics_path = f"/events/{event_id}/calendar.ics?token={participant.calendar_token}"
+                webcal_url = f"webcal://{webcal_host}{ics_path}"
+                https_url = f"{base_url}{ics_path}"
+
+                body = (
+                    f"Hallo {participant.name},\n\n"
+                    f"Du kannst das Event \"{event.title}\" in deinen Kalender abonnieren.\n"
+                    f"Der Kalender aktualisiert sich automatisch, wenn sich Termine aendern.\n\n"
+                    f"Klicke hier, um das Abo in deiner Kalender-App zu oeffnen:\n"
+                    f"{webcal_url}\n\n"
+                    f"Oder trage diese URL manuell ein:\n"
+                    f"{https_url}\n\n"
+                    f"Anleitung:\n"
+                    f"  Google Calendar: Andere Kalender -> Per URL hinzufuegen\n"
+                    f"  Outlook: Kalender hinzufuegen -> Aus dem Internet abonnieren\n"
+                    f"  Apple Calendar: Ablage -> Kalenderabonnement\n\n"
+                    f"Wichtig: Dieser Link ist persoenlich - bitte nicht weitergeben.\n\n"
+                    f"-- EventFinder"
+                )
+                await _send_email(
+                    f"Kalender abonnieren: {event.title}",
+                    participant.email,
+                    body,
+                    settings,
+                )
+    finally:
+        await engine.dispose()
