@@ -32,6 +32,7 @@ class User(Base):
     bundesland: Mapped[Optional[str]] = mapped_column(String(50))
     is_owner: Mapped[bool] = mapped_column(default=False)
     is_active: Mapped[bool] = mapped_column(default=True)
+    calendar_token: Mapped[Optional[str]] = mapped_column(String(64), unique=True, nullable=True)
     created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -75,6 +76,8 @@ class Event(Base):
     background_image_path: Mapped[Optional[str]] = mapped_column(String(255))
     background_blur: Mapped[int] = mapped_column(SmallInteger, default=4)
     background_overlay: Mapped[float] = mapped_column(Float, default=0.55)
+    event_start_time: Mapped[Optional[str]] = mapped_column(String(5), nullable=True)
+    event_end_time: Mapped[Optional[str]] = mapped_column(String(5), nullable=True)
 
     organizer: Mapped["User"] = relationship(back_populates="events_organized")
     participants: Mapped[List["EventParticipant"]] = relationship(back_populates="event", cascade="all, delete-orphan")
