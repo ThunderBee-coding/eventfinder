@@ -48,6 +48,8 @@ class EventPatch(BaseModel):
     is_closed: Optional[bool] = None
     background_blur: Optional[int] = None
     background_overlay: Optional[float] = None
+    event_start_time: Optional[str] = None  # "HH:MM"
+    event_end_time: Optional[str] = None    # "HH:MM"
 
 class EventResponse(EventBase):
     id: uuid.UUID
@@ -62,6 +64,8 @@ class EventResponse(EventBase):
     background_image_path: Optional[str] = None
     background_blur: int = 4
     background_overlay: float = 0.55
+    event_start_time: Optional[str] = None
+    event_end_time: Optional[str] = None
     created_at: datetime
     class Config:
         from_attributes = True
