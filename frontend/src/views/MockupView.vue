@@ -132,15 +132,13 @@ async function vote(date: string, status: string) {
   if (!proposal) return
 
   const previousVote = proposal.my_vote
-  // Toggle off if clicking the same status again
-  const newStatus = proposal.my_vote === status ? null : status
-  proposal.my_vote = newStatus
+  proposal.my_vote = status
 
   voting.value = date
   try {
     const res = await axios.post(
       `/vote/${eventId}/${date}`,
-      { status: newStatus ?? status },
+      { status },
       { params: { token } }
     )
     // Update all proposals from response
