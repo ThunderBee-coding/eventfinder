@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.orm import selectinload
 from typing import List, Tuple
 from datetime import date
@@ -166,14 +166,20 @@ async def post_vote(
     )
     existing = result.scalar_one_or_none()
     if existing:
-        existing.status = body.status
+        # Use CAST() not :: to avoid SQLAlchemy named-param parser conflict with PostgreSQL cast syntax
+        await db.execute(
+            text("UPDATE availabilities SET status = CAST(:s AS availabilitystatus), updated_at = NOW() WHERE id = :i"),
+            {"s": body.status.value, "i": str(existing.id)},
+        )
+        # Expire only this object so selectinload re-reads it from DB (raw SQL bypasses ORM identity map)
+        db.expire(existing)
     else:
-        db.add(
-            models.Availability(
-                participant_id=participant.id,
-                event_date=vote_date,
-                status=body.status,
-            )
+        await db.execute(
+            text(
+                "INSERT INTO availabilities (id, participant_id, event_date, status, created_at, updated_at) "
+                "VALUES (gen_random_uuid(), :pid, :edate, CAST(:s AS availabilitystatus), NOW(), NOW())"
+            ),
+            {"pid": str(participant.id), "edate": vote_date, "s": body.status.value},
         )
     await db.commit()
 
