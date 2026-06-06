@@ -123,7 +123,7 @@ class AvailabilityWithName(AvailabilityBase):
 # --- Vote Page Schemas ---
 
 class VoteRequest(BaseModel):
-    status: AvailabilityStatus  # "best" | "possible" | "impossible"
+    status: AvailabilityStatus
 
 class VoteStatusEntry(BaseModel):
     best: List[str] = []
@@ -133,12 +133,14 @@ class VoteStatusEntry(BaseModel):
 
 class ProposalVoteState(BaseModel):
     date: date
-    my_vote: Optional[str] = None  # "best" | "possible" | "impossible" | None
+    my_vote: Optional[AvailabilityStatus] = None
     votes: VoteStatusEntry
 
 class VoteEventInfo(BaseModel):
     id: uuid.UUID
     title: str
+    class Config:
+        from_attributes = True
 
 class VotePageResponse(BaseModel):
     event: VoteEventInfo
