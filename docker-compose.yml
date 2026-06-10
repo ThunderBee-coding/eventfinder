@@ -2,6 +2,8 @@ services:
   db:
     image: postgres:15-alpine
     container_name: eventfinder-db
+    restart: unless-stopped
+    cpus: 0.1   # Projekt-Cap: eventfinder-Stack gesamt <= 0.6 CPU (30% von 2 Kernen)
     environment:
       POSTGRES_USER: eventfinder
       POSTGRES_PASSWORD: password
@@ -13,6 +15,8 @@ services:
   redis:
     image: redis:7-alpine
     container_name: eventfinder-redis
+    restart: unless-stopped
+    cpus: 0.05
     volumes:
       - eventfinder-redis-data:/data
 
@@ -21,6 +25,8 @@ services:
       context: ./backend
       dockerfile: ../Dockerfile.backend
     container_name: eventfinder-backend
+    restart: unless-stopped
+    cpus: 0.2
     ports:
       - "127.0.0.1:8000:8000"
     depends_on:
@@ -41,6 +47,8 @@ services:
       context: ./backend
       dockerfile: ../Dockerfile.backend
     container_name: eventfinder-worker
+    restart: unless-stopped
+    cpus: 0.15
     command: celery -A tasks worker --loglevel=info
     depends_on:
       - redis
@@ -59,6 +67,8 @@ services:
       context: ./frontend
       dockerfile: ../Dockerfile.frontend
     container_name: eventfinder-frontend
+    restart: unless-stopped
+    cpus: 0.1
     ports:
       - "127.0.0.1:5173:80"
     depends_on:
