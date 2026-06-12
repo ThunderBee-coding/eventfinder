@@ -28,7 +28,9 @@ class User(Base):
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
-    role: Mapped[UserRole] = mapped_column(Enum(UserRole, name='user_role'), default=UserRole.participant)
+    # Enum-Typname MUSS den von SQLAlchemy real erzeugten DB-Typen entsprechen (ohne Unterstrich).
+    # init.sql (user_role/availability_status/notification_type) lief nie — DB-Typen heißen userrole/availabilitystatus/notificationtype.
+    role: Mapped[UserRole] = mapped_column(Enum(UserRole, name='userrole'), default=UserRole.participant)
     bundesland: Mapped[Optional[str]] = mapped_column(String(50))
     is_owner: Mapped[bool] = mapped_column(default=False)
     is_active: Mapped[bool] = mapped_column(default=True)
@@ -103,7 +105,7 @@ class Availability(Base):
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     participant_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("event_participants.id", ondelete="CASCADE"), nullable=False)
     event_date: Mapped[date] = mapped_column(Date, nullable=False)
-    status: Mapped[AvailabilityStatus] = mapped_column(Enum(AvailabilityStatus, name='availability_status'), default=AvailabilityStatus.possible)
+    status: Mapped[AvailabilityStatus] = mapped_column(Enum(AvailabilityStatus, name='availabilitystatus'), default=AvailabilityStatus.possible)
     comment: Mapped[Optional[str]] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -128,7 +130,7 @@ class Notification(Base):
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     event_id: Mapped[Optional[uuid.UUID]] = mapped_column(ForeignKey("events.id", ondelete="CASCADE"))
-    type: Mapped[NotificationType] = mapped_column(Enum(NotificationType, name='notification_type'), nullable=False)
+    type: Mapped[NotificationType] = mapped_column(Enum(NotificationType, name='notificationtype'), nullable=False)
     title: Mapped[Optional[str]] = mapped_column(String(255))
     message: Mapped[Optional[str]] = mapped_column(Text)
     is_read: Mapped[bool] = mapped_column(default=False)
